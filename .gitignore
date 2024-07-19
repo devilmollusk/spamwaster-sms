@@ -7,3 +7,5 @@ simple_app.py
 
 .well-known/
 __pycache__/
+keys/
+spamwaster-env/
