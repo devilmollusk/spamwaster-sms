@@ -18,38 +18,33 @@ from datetime import datetime
 import time
 import random
 
-#import sshtunnel
-
-#sshtunnel.SSH_TIMEOUT = 15.0
-#sshtunnel.TUNNEL_TIMEOUT = 15.0
-
 # Load environment variables from .env file
 load_dotenv()
+
+# Need to use an ssh tunnel to access the pythonanywhere MySQL db
 # Get the value of USE_SSH_TUNNEL
 use_ssh = os.getenv('USE_SSH_TUNNEL', 'False').lower() in ['true', '1', 't', 'y', 'yes']
+require_consent = os.getenv('REQUIRE_CONSENT', 'False').lower() in ['true', '1', 't', 'y', 'yes']
 
 app = Flask(__name__)
-#socketio = SocketIO(app)
 
 logging.basicConfig(level=logging.INFO)
 
+# Initialize a dictionay to store Gemini chat instances
 app.chat_dict = {}
-app.mode_dict = {}
 
-#proxy_client = TwilioHttpClient(proxy={'http': os.environ['http_proxy'], 'https': os.environ['https_proxy']})
-
+# Load a bunch of environment variables
 VONAGE_API_KEY = os.getenv("VONAGE_API_KEY")
 VONAGE_API_SECRET = os.getenv("VONAGE_API_SECRET")
 current_dir = os.path.dirname(os.path.realpath(__file__))
 keys_dir = os.path.join(current_dir, 'keys')
 VONAGE_APPLICATION_PRIVATE_KEY_PATH = os.path.join(keys_dir, 'private.key')
-VONAGE_APPLICATION_ID = '63614fd4-31ea-4085-aeb4-9d5719ae1029'
+VONAGE_APPLICATION_ID = os.getenv("VONAGE_APPLICATION_ID")
 
-TWILIO_ACCOUNT_SID = os.environ["TWILIO_ACCOUNT_SID"]
-TWILIO_AUTH_TOKEN = os.environ["TWILIO_AUTH_TOKEN"]
-POSTACK_API_KEY = os.environ['POSTACK_API_KEY']
-
-REQUIRE_CONSENT = os.environ["REQUIRE_CONSENT"]
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_MESSAGE_SERVICE_SID = os.getenv("TWILIO_MESSAGE_SERVICE_SID")
+POSTACK_API_KEY = os.getenv('POSTACK_API_KEY')
 
 # Database configuration using environment variables
 db_user = os.getenv('DB_USER')
@@ -58,34 +53,28 @@ db_host = '127.0.0.1' if use_ssh else os.getenv('DB_HOST')
 db_name = os.getenv('DB_NAME')
 
 # SQLAlchemy Database URI
-app.config['SECRET_KEY'] = 'ZL1ZPkd3GKvJ8YShocvUgVSkzLQcaCo7PQRa/C/AAdU='
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_host}/{db_name}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Global variable for system instructions and instruction mapping
 system_instructions = 'Your purpose is to waste the time of SMS scammers. Act interested and engage in conversation. Pretend to be a real person. You are communicating over text'  # Default system instructions
-instruction_mapping = {
-    'Shy': 'You are a shy teenager communicating over text.',
-    'Confident': 'You are a confident speaker with assertive communication.',
-    'Grouchy': 'You are feeling grouchy today and your responses may be short.',
-    'Distracted': 'You are distracted and your responses may not be fully focused.'
-}
 
 # Database configuration
 db_config = {
-    'user': 'devilmollusk',
-    'password':'test',
-    'host': 'devilmollusk.mysql.pythonanywhere-services.com',
-    'database': 'devilmollusk$starter-db'
+    'user': db_user,
+    'password': db_password,
+    'host': db_host,
+    'database': db_name
 }
 
 
-API_KEY = 'sk-proj-crMCYjp7L3abdVGmPPIzT3BlbkFJSIJUXb83rIH8jqPGbAWu'
-API_URL = 'https://api.openai.com/v1/chat/completions'
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_API_URL = os.getenv('OPENAI_API_URL')
 
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': f'Bearer {API_KEY}'
+    'Authorization': f'Bearer {OPENAI_API_KEY}'
 }
 
 history = []
@@ -121,7 +110,7 @@ class Message(db.Model):
 def clean_phone_number(phone_number):
     return re.sub(r'\D', '', phone_number)
 
-# Create the database and the User table
+# Create the database and the User and Message tables
 with app.app_context():
     db.create_all()
 
@@ -177,7 +166,7 @@ with app.app_context():
       "max_output_tokens": 150,
       "response_mime_type": "text/plain",
     }
-    app.client = vonage.Client(
+    app.vonage_client = vonage.Client(
         application_id=VONAGE_APPLICATION_ID,
         private_key=VONAGE_APPLICATION_PRIVATE_KEY_PATH,
         key=VONAGE_API_KEY,
@@ -247,31 +236,31 @@ def twilio_send_message(msg, to_phone, from_phone):
 
     message = client.messages.create(
         body=response.text,
-        messaging_service_sid='MGe307ac508d8e4a350fb676f86cf017c4',
+        messaging_service_sid=TWILIO_MESSAGE_SERVICE_SID,
         #from_=from_phone,
         to=to_phone,
     )
 
     print(message)
-    #Vonage
-    #client = vonage.Client(key=VONAGE_API_KEY, secret=VONAGE_API_SECRET)
-    #responseData = client.sms.send_message({
-   #     "from": my_phone,
-   #     "to": phone,
-   #     "text": msg,
-   # })
 
-#    print(responseData)
-#    if responseData["messages"][0]["status"] == "0":
-#        print("Message sent successfully.")
-#        return 204
-#    else:
-#        print(f"Message failed with error: {responseData['messages'][0]['error-text']}")
-#        return 400
+def vonage_send_message(msg, to_phone, from_phone):
+    sms = vonage.Sms(app.vonage_client)
+    responseData = sms.send_message(
+        {
+            "from": from_phone,
+            "to": to_phone,
+            "text": msg,
+        }
+    )
+
+    if responseData["messages"][0]["status"] == "0":
+        print("Message sent successfully.")
+    else:
+        print(f"Message failed with error: {responseData['messages'][0]['error-text']}")
 
 def receive_message(from_phone, message):
     user = User.query.filter_by(phone=from_phone).first()
-
+    
     # Determine the right reply for this message
     if message in ['END', 'STOP', 'CANCEL', 'UNSUBSCRIBE']:
         response_string = "ending the conversation. Please text START to resume. Thank you."
@@ -280,17 +269,12 @@ def receive_message(from_phone, message):
     elif message == 'START':
         response_string = "Thanks for authorizing. Beginning conversation"
         handle_consent(from_phone)
-        # Start a new thread to send the message asynchronously
-        #thread = threading.Thread(target=send_message, args=(body, from_phone, to_phone,))
-        #thread.start()
-    
-    elif (user and user.consent) or REQUIRE_CONSENT == False:
+     
+    else:
         chat = None
         # Check if the string starts with 'PROMPT'
         if message.startswith('PROMPT'):
-            # Assign the remaining portion of the string (after 'PROMPT: ') to new_prompt
-            #old_chat = app.chat_dict[from_phone] if from_phone in app.chat_dict else None
-            #history = old_chat.history if old_chat else []
+            
             new_prompt = message[len('PROMPT: '):]
             if new_prompt != '':
                 model = reinitialize_model(new_prompt)
@@ -329,9 +313,6 @@ def receive_message(from_phone, message):
         # Commit the session to save the new message to the database
         db.session.commit()
 
-    else:
-        response_string = "Please text START to begin conversing with the AI agent"
-
     # Generate a random delay between 1 and 3 seconds
     delay = random.uniform(1, 3)
     
@@ -339,42 +320,8 @@ def receive_message(from_phone, message):
     time.sleep(delay)
     return response_string
 
-@app.route('/status')
-def status():
-    # Sample options for the dropdown
-    options = ['Shy', 'Confident', 'Grouchy', 'Distracted']
-
-    # Assuming system_instructions is retrieved from somewhere in your application
-    system_instructions = 'Shy'
-
-    return render_template('status.html', options=options, instructions=system_instructions)
-
 # ----------------------------------------------------
 # Chat api handling routes
-@app.route('/chat', methods=['POST', 'GET'])
-def chat():
-    if request.method == 'POST':
-        try:
-            data = request.get_json()
-            prompt = data.get('prompt')
-            question = prompt
-            print(question)
-            # response = app.model.generate_content(question)
-            response = app.chat.send_message(question)
-            # Generate a random delay between 1 and 3 seconds
-            delay = random.uniform(1, 3)
-            
-            # Wait for the random delay
-            time.sleep(delay)
-            if response.text:
-                return response.text
-            else:
-                return "Bob:Sorry, but I think Gemini didn't want to answer that!"
-        except Exception as e:
-            print(e)
-            return f"{e} Dob:Sorry, but Gemini didn't want to answer that!"
-
-    return render_template('chat.html', **locals())
 
 @app.route('/gpt-chat', methods=['POST'])
 def gpt_chat():
@@ -391,7 +338,7 @@ def gpt_chat():
     }
 
     try:
-        response = requests.post(API_URL, headers=headers, json=payload)
+        response = requests.post(OPENAI_API_URL, headers=headers, json=payload)
         response.raise_for_status()  # Raise an HTTPError for bad responses
     except requests.exceptions.RequestException as e:
         error_message = str(e)
@@ -445,18 +392,18 @@ def inbound_sms():
 
     if msg != '':
         response = app.model.generate_content(msg)
-        send_message(response.text, phone, my_phone)
+        vonage_send_message(response.text, phone, my_phone)
 
         print(response.text)
     return ('', 204)
 
-@app.route("/webhooks/message-status", methods=["POST"])
+@app.route("/vonage/message-status", methods=["POST"])
 def message_status():
     data = request.get_json()
     print('Message status: ' + data)
     return "200"
 
-@app.route('/webhooks/delivery-receipt', methods=['GET', 'POST'])
+@app.route('/vonage/delivery-receipt', methods=['GET', 'POST'])
 def delivery_receipt():
     if request.is_json:
         pprint(request.get_json())
@@ -483,11 +430,19 @@ def incoming_sms():
     # Start our TwiML response
     resp = MessagingResponse()
     response_string = receive_message(from_phone, body)
+    print(response_string)
     resp.message = response_string
-
-    print(resp)
+    if from_phone.startswith('whatsapp:'):
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            from_=to_phone,
+            body=response_string,
+            to=from_phone,
+        )
+    print(resp.message)
     return str(resp)
 
+# Postack route
 @app.route('/postack/sms', methods=['POST'])
 def postack_sms():
     content = request.json
@@ -512,31 +467,6 @@ def incoming_sms_status():
     logging.info('SID: {}, Status: {}'.format(message_sid, message_status))
 
     return ('', 204)
-
-@app.route('/submit', methods=['POST'])
-def submit():
-    username = request.form.get('username')
-    email = request.form.get('email')
-    phone = request.form.get('phone')
-    consent = request.form.get('permission') == 'on'
-    print(username)
-    print(email)
-    print(phone)
-    print(consent)
-
-    if not username or not email or not phone or not consent:
-        flash('Please fill out all fields', 'error')
-        return redirect(url_for('signup'))
-    user = User(username=username, email=email, phone=phone, consent=consent)
-    db.session.add(user)
-    db.session.commit()
-    flash('Form submitted successfully!', 'success')
-    return redirect('/')
-
-@app.route('/thank-you')
-def thank_you():
-    return 'Thank you for signing up!'
-
 
 if __name__ == '__main__':
     app.run(debug=True)
