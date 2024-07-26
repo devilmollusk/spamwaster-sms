@@ -55,6 +55,7 @@ pillow==10.4.0
 platformdirs==4.2.2
 proto-plus==1.24.0
 protobuf==4.25.3
+pyaes==1.6.1
 pyarrow==16.1.0
 pyasn1==0.6.0
 pyasn1_modules==0.4.0
@@ -67,10 +68,13 @@ PyJWT==2.8.0
 PyMySQL==1.1.1
 PyNaCl==1.5.0
 pyparsing==3.1.2
+Pyrogram==2.0.106
+PySocks==1.7.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-engineio==4.9.1
 python-socketio==5.11.3
+python-telegram==0.19.0
 pytz==2024.1
 referencing==0.35.1
 requests==2.32.3
@@ -86,7 +90,9 @@ SQLAlchemy==2.0.31
 sshtunnel==0.4.0
 streamlit==1.36.0
 svix==1.25.0
+telegram_text==0.2.0
 tenacity==8.5.0
+TgCrypto==1.2.5
 toml==0.10.2
 toolz==0.12.1
 tornado==6.4.1
@@ -98,6 +104,7 @@ typing_extensions==4.12.2
 tzdata==2024.1
 uritemplate==4.1.1
 urllib3==2.2.2
+utils==1.0.2
 virtualenv==20.26.3
 vonage==3.16.0
 vonage-jwt==1.1.1

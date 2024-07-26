@@ -9,3 +9,4 @@ simple_app.py
 __pycache__/
 keys/
 spamwaster-env/
+spamwaster/

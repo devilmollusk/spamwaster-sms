@@ -118,6 +118,7 @@ def count_words(text):
     words = text.split()
     return len(words)
 
+
 if __name__ == "__main__":
     chat_dict = {}
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -176,9 +177,27 @@ if __name__ == "__main__":
     kid_photo_path = "./static/daughter.jpg"
     coinbase_photo_path = "./static/coinbase.jpg"
 
+    # Function to download image
+    def download_image(chat_id, message):
     
+
+        # Check if the message contains a photo
+        if message['content']['@type'] == 'messagePhoto':
+            photo = message['content']['photo']
+            file_id = photo['sizes'][-1]['photo']['id']  # Get the highest resolution photo
+
+            # Download the file
+            file_info = tg.call_method('downloadFile', {
+                'file_id': file_id,
+                'priority': 1
+            })
+
+            print(file_info)
+
     #if result.ok:
     #    uploaded_file = result.update
+    def download_handler(update):
+        print(update)
 
     def new_message_handler(update):
         with app.app_context():
@@ -186,44 +205,46 @@ if __name__ == "__main__":
             message_content = update['message']['content'].get('text', {})
             message_text = message_content.get('text', '')
             is_outgoing = update['message']['is_outgoing']
-            if message_content:
-                if not is_outgoing:
-                    chat_id = update['message']['chat_id']
-                    result = tg.call_method('getUser', params={'user_id': chat_id})
-                    result.wait()
-                    phone_number=''
-                    user = None
-                    if result:
-                        first_name = result.update['first_name']
-                        last_name = result.update['last_name']
-                        phone_number = '+' + result.update['phone_number']
-                        user = User.query.filter_by(phone=phone_number).first()
-                        print(f"User: {chat_id}, Name: {first_name} {last_name}, Phone: {phone_number}")
-                        if user:
-                            user.first_name = first_name
-                            user.last_name = last_name
-                            user.telegram = chat_id
-                        else:
-                            user = User(
-                                username='',
-                                email='',
-                                phone=phone_number,
-                                consent=True,
-                                telegram=chat_id,
-                                first_name=first_name,
-                                last_name=last_name
-                            )
-                            db.session.add(user)
+            
+            if not is_outgoing:
+                chat_id = update['message']['chat_id']
+                download_image(chat_id, update['message'])
+                result = tg.call_method('getUser', params={'user_id': chat_id})
+                result.wait()
+                phone_number=''
+                user = None
+                if result:
+                    first_name = result.update['first_name']
+                    last_name = result.update['last_name']
+                    phone_number = '+' + result.update['phone_number']
+                    user = User.query.filter_by(phone=phone_number).first()
+                    print(f"User: {chat_id}, Name: {first_name} {last_name}, Phone: {phone_number}")
+                    if user:
+                        user.first_name = first_name
+                        user.last_name = last_name
+                        user.telegram = chat_id
+                    else:
+                        user = User(
+                            username='',
+                            email='',
+                            phone=phone_number,
+                            consent=True,
+                            telegram=chat_id,
+                            first_name=first_name,
+                            last_name=last_name
+                        )
+                        db.session.add(user)
                         db.session.commit()
 
-                    if chat_id in chat_dict:
-                        print(f'continuing conversation with {chat_id}')
-                        chat = chat_dict[chat_id]
-                    else:
-                        print(f"{chat_id} not found, starting new conversation")
-                        chat = model.start_chat(history=[])
-                        chat_dict[chat_id] = chat
+                if chat_id in chat_dict:
+                    print(f'continuing conversation with {chat_id}')
+                    chat = chat_dict[chat_id]
+                else:
+                    print(f"{chat_id} not found, starting new conversation")
+                    chat = model.start_chat(history=[])
+                    chat_dict[chat_id] = chat
 
+                if message_text:
                     response = chat.send_message(message_text)
                     response_string = response.text
 
@@ -259,7 +280,7 @@ if __name__ == "__main__":
                         elif 'family' in response.text.lower():
                             photo_path = kid_photo_path
                             photo_text = 'here\'s a pic of my gorgeous daughter Lindsay'
-                       
+                        
                         
                         # Send the message with the photo
                         message_options = {
@@ -300,4 +321,5 @@ if __name__ == "__main__":
                         )
 
     tg.add_message_handler(new_message_handler)
+    tg.add_update_handler("fileHandlerType", download_handler)
     tg.idle()
