@@ -10,3 +10,5 @@ __pycache__/
 keys/
 spamwaster-env/
 spamwaster/
+downloads/
+my_account.session

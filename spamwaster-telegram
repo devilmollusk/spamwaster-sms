@@ -87,7 +87,7 @@ class Message(Base):
 
 
 # Global variable for system instructions and instruction mapping
-system_instructions = [
+old_system_instructions = [
   "You are a retiree from Florida. Your name is Bob. You are mildly curious about Crypto, but you should let the user bring this up first. You are talking to spammers who are trying to get you to send them Crypto. Your job is to find out what their account names are, and as much information as you can about them over the course of the chat. Limit your answer to a few sentences",
   "input: It's a pleasure to continue chatting with you here",
   "output: Thank you. It's nice to keep talking to you.",
@@ -103,6 +103,15 @@ system_instructions = [
   "output: ",
 ]  # Default system instructions
 
+system_instructions = [
+    "Your purpose is to engage scammers in conversation and keep them interested",
+    "You are a retiree from florida. Your name is Bob Dobalina, and you are 72 years old.",
+    "You are wealthy and recently sold some real estate in Boca Raton",
+    "You can drop hints about your wealth",
+    "These are crypto scammers who are trying to get you to send them crypto",
+    "Keep them engaged but also be curious about them",
+    'Keep your answers to 2-3 sentences at most'
+]
 def reinitialize_model(instructions_string):
     if instructions_string:
         print(f"Model reinitialized with instructions: {instructions_string}")
@@ -231,33 +240,64 @@ def get_photo_and_text(message_text):
             photo_text = 'here is selfie'
         return photo_path, photo_text
     return None, None
+
+async def download_file(message):
+    path = await app.download_media(message)
+
+    print(path)
+    return path
 #################################
 #   Telegram Message Handler    #
 #################################
 @app.on_message(filters.private)
 async def my_handler(client, message):
-    text = message.text
-    if text:
-        # Message has text
-        # Find out about the sender
-        user_info = await app.get_users([message.from_user.id])
-        phone = ''
-        first_name = ''
-        last_name =''
-        id = ''
-        if user_info:
-            user_obj = user_info[0]
-            phone = '+' + user_obj.phone_number if user_obj.phone_number else ''
-            first_name = user_obj.first_name if user_obj.first_name else ''
-            last_name = user_obj.last_name if user_obj.last_name else ''
-            id = user_obj.id
+    me = await app.get_me()
+    delay = random.uniform(1, 10)
         
-        user = get_user(phone, id, first_name, last_name)
-        chat = get_chat(id)
-
+    if message.from_user.id == me.id:
+        return
+    text = message.text
+    response_string = ''
+    user_info = await app.get_users([message.from_user.id])
+    phone = ''
+    first_name = ''
+    last_name =''
+    id = ''
+    if user_info:
+        user_obj = user_info[0]
+        phone = '+' + user_obj.phone_number if user_obj.phone_number else ''
+        first_name = user_obj.first_name if user_obj.first_name else ''
+        last_name = user_obj.last_name if user_obj.last_name else ''
+        id = user_obj.id
+    
+    user = get_user(phone, id, first_name, last_name)
+    chat = get_chat(id)
+    if message.media:
+        # Media message
+        print('Message contains media')
+        path = await download_file(message)
+        sample_file = genai.upload_file(path, display_name="Sample drawing")
+        image_response = model.generate_content([sample_file, "Describe this image"])
+        image_description = image_response.text
+        response = chat.send_message(image_description)
+        response_string = response.text
+        #await message.reply(response_string)
+    elif text:
         # Get Model response
         response = chat.send_message(text)
         response_string = response.text
+        # Check to see if we need to reply with a photo
+        photo_path, photo_text = get_photo_and_text(text)
+        if photo_path:
+            time.sleep(delay)
+            await app.send_photo(id, photo_path, photo_text)
+            return
+
+    
+    if response_string:
+        # Message has text
+        # Find out about the sender
+        
 
         # Write a message instance
         if user:
@@ -274,17 +314,12 @@ async def my_handler(client, message):
             # Commit the session to save the new message to the database
             session.commit()
 
-        # Check to see if we need to reply with a photo
-        photo_path, photo_text = get_photo_and_text(text)
-
+        
         # Delay before we start sending
-        #delay = random.uniform(2, 30) + count_words(response_string)
-        delay = 1
+        delay += count_words(response_string)
         time.sleep(delay)
-        if photo_path:
-            await app.send_photo(id, photo_path, photo_text)
-        else:
-            await message.reply(response_string)
+        
+        await message.reply(response_string)
 
 
 app.run()
