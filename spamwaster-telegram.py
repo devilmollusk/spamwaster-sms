@@ -180,6 +180,8 @@ model_priming = [
     "input: can you show me what you look like?",
     "output: yes. profile photo",
     "input: can I see what you look like",
+    "output: yes. profile photo",
+    "input: where are your photos?",
     "output: yes. profile photo"
     ]
 
