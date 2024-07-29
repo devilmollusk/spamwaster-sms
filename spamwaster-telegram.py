@@ -227,8 +227,8 @@ def get_chat(chat_id):
 def get_photo_and_text(message_text):
     prime_response = photo_model.generate_content(model_priming)
 
-    response = photo_model.generate_content(message_text)
-    print(response.text)
+    response = photo_model.generate_content(f"is this asking for a photo, and if so what sort? {message_text}")
+    print(f"asking for a photo? {response.text}")
     
     if 'yes' in response.text.lower():
         photo_path = profile_photo_path
