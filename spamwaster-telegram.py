@@ -1,4 +1,5 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
+from pyrogram.types import Message
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
@@ -62,8 +63,8 @@ class User(Base):
     consent = Column(Boolean, nullable=False)
     favorite = Column(Boolean, default=False)
     telegram = Column(String(255), nullable=True)
-    first_name = Column(String(255), nullable=True)
-    last_name = Column(String(255), nullable=True)
+    first_name = Column(UnicodeText, nullable=True)
+    last_name = Column(UnicodeText, nullable=True)
 
     def __init__(self, username, email, phone, consent, telegram, first_name, last_name):
         self.username = username
@@ -279,9 +280,9 @@ async def my_handler(client, message):
     
     user = get_user(phone, id, first_name, last_name)
     chat = get_chat(id)
-    if message.media:
+    if message.media and message.media == enums.MessageMediaType.PHOTO:
         # Media message
-        print('Message contains media')
+        print(f'Message contains media: ')
         path = await download_file(message)
         sample_file = genai.upload_file(path, display_name="Sample drawing")
         image_response = model.generate_content([sample_file, "Describe this image"])
