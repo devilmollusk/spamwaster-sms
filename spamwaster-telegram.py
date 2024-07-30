@@ -55,10 +55,23 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 # Upload the photo file
+photo_dir = "./static/"
 profile_photo_path = "./static/me.jpg"
 pet_photo_path = "./static/dog.jpg"
 kid_photo_path = "./static/daughter.jpg"
 coinbase_photo_path = "./static/coinbase.jpg"
+bling_photo_path = "./static/crypto_bling.png"
+selfie_dict = {
+    "selfie_01.jpg": "Here's me enjoying some delicious fruit",
+    "selfie_02.jpg": "Here is one of the happiest days of my life: the marriage of my beautiful daughter Nancy. She's a peach!",
+    "selfie_03.jpg": "Here's me and my late dog Rufus. I miss him \U0001F622",
+    "selfie_04.jpg": "This is me in Puerta Vallarta. Vive Mexico!!!",
+    "selfie_05.jpg": "This is me camping in Yosemite",
+    "selfie_06.jpg": "Me tending the fire",
+    "selfie_07.jpg": "This is me about to hit the trails",
+    "selfie_08.jpg": "This is me standing by the ruins of an old bridge",
+    "selfie_09.jpg": "This is me enjoying a tasty burger"
+}
 
 # Define the User model
 class User(Base):
@@ -174,26 +187,36 @@ photo_model = genai.GenerativeModel(
     system_instruction="Your job is to determine whether the input text is specifically asking the user to upload a photo. You should respond with yes or no, and if you a short description of the type of photo being asked for, such as \"profile photo\" or \"screenshot\"",
 )
 model_priming = [
-    "Your job is to determine if the input text is asking for a photo. You can respond with yes or no. In the case of yes, give a brief description of what sort of photo is being asked for, like \"profile photo\" and \"screenshot\"",
-    "input: can you send me a photo of you",
-    "output: yes. profile photo",
-    "input: Can you take a picture of the Coinbase app and send it to me?",
-    "output: yes. screenshot",
-    "input: What sort of dogs do you have?",
-    "output: no",
-    "input: Can you send me a pitcure of your dogs?",
-    "output: yes. pet photo",
-    "input: Can you show me what you look like?",
-    "output: yes. profile photo",
-    "input: Can you show me what you look like?",
-    "output: yes. profile photo",
-    "input: can you show me what you look like?",
-    "output: yes. profile photo",
-    "input: can I see what you look like",
-    "output: yes. profile photo",
-    "input: where are your photos?",
-    "output: yes. profile photo"
-    ]
+  "Your job is to determine if the input text is asking for a photo. You can respond with yes or no. In the case of yes, give a brief description of what sort of photo is being asked for, like \"profile photo\" and \"screenshot\"",
+  "input: can you send me a photo of you",
+  "output: yes. profile photo",
+  "input: Can you take a picture of the Coinbase app and send it to me?",
+  "output: yes. screenshot",
+  "input: What sort of dogs do you have?",
+  "output: no",
+  "input: Can you send me a pitcure of your dogs?",
+  "output: yes. pet photo",
+  "input: Can you show me what you look like?",
+  "output: yes. profile photo",
+  "input: Can you show me what you look like?",
+  "output: yes. profile photo",
+  "input: Where are your photos?",
+  "output: yes. profile photo",
+  "input: Do you have any recent photos of your mom?",
+  "output: yes. family photo",
+  "input: can you show me what you look like?",
+  "output: yes. profile photo",
+  "input: Show me what you look like",
+  "output: yes. profile photo",
+  "input: What do you look like?",
+  "output: yes. profile photo",
+  "input: What does your mom look like?",
+  "output: yes. family photo",
+  "input: Where are your photos?",
+  "output: yes. profile photo",
+  "input: Show me your wallet",
+  "input: yes. screenshot"
+]
 
 def count_words(text):
     words = text.split()
@@ -273,12 +296,19 @@ def get_photo_and_text(message_text):
         elif 'coinbase' in message_text.lower():
             photo_path = coinbase_photo_path
             photo_text = 'I hope I did that right'
+        elif 'screenshot' in response.text.lower():
+            photo_path = bling_photo_path
+            photo_text = 'Here\'s what I have at the moment in crypto. I\'ve got about a million more in other investments'
         elif 'family' in response.text.lower():
             photo_path = kid_photo_path
             photo_text = 'here\'s a pic of my gorgeous daughter Lindsay'
         else:
-            photo_path = profile_photo_path
-            photo_text = 'here is selfie'
+            # Select a random key-value pair
+            random_key_value_pair = random.choice(list(selfie_dict.items()))
+
+            # Unpacking the key-value pair
+            photo, photo_text = random_key_value_pair
+            photo_path = photo_dir + photo
         return photo_path, photo_text
     return None, None
 
