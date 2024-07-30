@@ -6,10 +6,12 @@ import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import random
 import time
+import pytz
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeText, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeText, ForeignKey, DateTime, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -190,28 +192,52 @@ def count_words(text):
     words = text.split()
     return len(words)
 
-def get_user(phone_number, chat_id, first_name='', last_name=''):
-    user = session.query(User).filter_by(phone=phone_number).first()
-    if user:
-        print(f"User found: {chat_id}, Name: {first_name} {last_name}, Phone: {phone_number}")
+def get_user(user_obj):
+    phone = '+' + user_obj.phone_number if user_obj.phone_number else ''
+    first_name = user_obj.first_name if user_obj.first_name else ''
+    last_name = user_obj.last_name if user_obj.last_name else ''
+    username = user_obj.username if user_obj.username else ''
+    id = user_obj.id
 
-        user.first_name = first_name
-        user.last_name = last_name
-        user.telegram = chat_id
+    # Try to find the user 
+    # Perform the query
+    user = session.query(User).filter(
+        or_(
+            User.username == username,
+            User.phone == phone,
+            User.first_name == first_name,
+            User.last_name == last_name,
+            User.telegram == id
+        )
+    ).first()
+
+    if user:
+        print(f"User found: {id}, Name: {first_name} {last_name}, Phone: {phone}")
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        if username:
+            user.username = username
+        if id:
+            user.telegram = id
+        if phone:
+            user.phone = phone
+       
     else:
-        print(f"Creating new user: {chat_id}, Name: {first_name} {last_name}, Phone: {phone_number}")
+        print(f"Creating new user: {id}, Name: {first_name} {last_name}, Phone: {phone}")
 
         user = User(
-            username='',
+            username=username,
             email='',
-            phone=phone_number,
+            phone=phone,
             consent=True,
-            telegram=chat_id,
+            telegram=id,
             first_name=first_name,
             last_name=last_name
         )
         session.add(user)
-        session.commit()
+    session.commit()
     return user
 
 def get_chat(chat_id):
@@ -267,18 +293,9 @@ async def my_handler(client, message):
     text = message.text
     response_string = ''
     user_info = await app.get_users([message.from_user.id])
-    phone = ''
-    first_name = ''
-    last_name =''
-    id = ''
     if user_info:
         user_obj = user_info[0]
-        phone = '+' + user_obj.phone_number if user_obj.phone_number else ''
-        first_name = user_obj.first_name if user_obj.first_name else ''
-        last_name = user_obj.last_name if user_obj.last_name else ''
-        id = user_obj.id
-    
-    user = get_user(phone, id, first_name, last_name)
+        user = get_user(user_obj)
     chat = get_chat(id)
     if message.media and message.media == enums.MessageMediaType.PHOTO:
         # Media message
@@ -291,9 +308,15 @@ async def my_handler(client, message):
         response_string = response.text
         #await message.reply(response_string)
     elif text:
+        # Get current time for EST
+        utc_time = datetime.now(pytz.utc)
+        est = pytz.timezone('US/Eastern')
+        est_time = utc_time.astimezone(est)
+
         # Get Model response
         response = chat.send_message(text)
         response_string = response.text
+
         # Check to see if we need to reply with a photo
         photo_path, photo_text = get_photo_and_text(text)
         if photo_path:
@@ -314,7 +337,7 @@ async def my_handler(client, message):
                 prompt=text,
                 response=response_string,
                 user_id=user.user_id,
-                phone=phone,
+                phone=user.phone,
                 service='Telegram'
             )
             session.add(new_message)
