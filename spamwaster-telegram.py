@@ -1,7 +1,9 @@
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
+from pyrogram.errors import RPCError
 from dotenv import load_dotenv
 import os
+import asyncio
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import random
@@ -286,8 +288,9 @@ async def download_file(message):
 @app.on_message(filters.private)
 async def my_handler(client, message):
     me = await app.get_me()
+    id = message.from_user.id
     delay = random.uniform(1, 10)
-        
+    
     if message.from_user.id == me.id:
         return
     text = message.text
@@ -295,6 +298,7 @@ async def my_handler(client, message):
     user_info = await app.get_users([message.from_user.id])
     if user_info:
         user_obj = user_info[0]
+        id = user_obj.id
         user = get_user(user_obj)
     chat = get_chat(id)
     if message.media and message.media == enums.MessageMediaType.PHOTO:
@@ -321,7 +325,10 @@ async def my_handler(client, message):
         photo_path, photo_text = get_photo_and_text(text)
         if photo_path:
             time.sleep(delay)
-            await app.send_photo(id, photo_path, photo_text)
+            try:
+                await app.send_photo(id, photo_path, photo_text)
+            except RPCError as e:
+                print(f"error sending photo {e}")
             return
 
     
