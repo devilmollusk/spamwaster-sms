@@ -325,7 +325,7 @@ async def my_handler(client, message):
     me = await app.get_me()
     id = message.from_user.id
     delay = random.uniform(1, 10)
-    relatice_path = ''
+    relative_path = ''
     
     if message.from_user.id == me.id:
         return
