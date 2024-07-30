@@ -107,8 +107,37 @@ class Message(Base):
     prompt_media = Column(String(255))
     response_media = Column(String(255))
 
+# Handle time of day
+def get_adjusted_dt(dt):
+    est = pytz.timezone('US/Eastern')
+    est_time = dt.astimezone(est)
+    return est_time
 
+def time_of_day(dt):
+    """
+    Determine the time of day based on the provided datetime object.
+    
+    Args:
+    dt (datetime): The datetime object to check.
+    
+    Returns:
+    str: One of 'morning', 'noon', 'afternoon', 'evening', or 'late night'.
+    """
+    hour = dt.hour
+    
+    if 5 <= hour < 12:
+        return 'morning'
+    elif 12 <= hour < 13:
+        return 'noon'
+    elif 13 <= hour < 17:
+        return 'afternoon'
+    elif 17 <= hour < 21:
+        return 'evening'
+    else:
+        return 'late night'
 
+# Global to store time of day
+saved_time_of_day = 'morning'
 # Global variable for system instructions and instruction mapping
 old_system_instructions = [
   "You are a retiree from Florida. Your name is Bob. You are mildly curious about Crypto, but you should let the user bring this up first. You are talking to spammers who are trying to get you to send them Crypto. Your job is to find out what their account names are, and as much information as you can about them over the course of the chat. Limit your answer to a few sentences",
@@ -136,10 +165,13 @@ system_instructions = [
     'Keep your answers to 2-3 sentences at most'
 ]
 def reinitialize_model(instructions_string):
-    if instructions_string:
-        print(f"Model reinitialized with instructions: {instructions_string}")
-    else:
-        print(f"Instructions not found for: {instructions_string}")
+    utc_time = datetime.now(pytz.utc)
+    est_time = get_adjusted_dt(utc_time)
+    current_time_of_day = time_of_day(est_time)
+    global saved_time_of_day
+    new_instructions = instructions_string + [f"Current time of day is {current_time_of_day}"]
+    saved_time_of_day = current_time_of_day
+    print (f"Time of day is: {saved_time_of_day}")
 
     model = genai.GenerativeModel(
         model_name="gemini-1.5-flash",
@@ -150,9 +182,9 @@ def reinitialize_model(instructions_string):
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
         },
-        system_instruction=instructions_string,
+        system_instruction=new_instructions,
     )
-    print(f"Model reinitialized with instructions: {system_instructions}")
+    print(f"Model reinitialized with instructions: {new_instructions}")
 
     return model
 
@@ -271,14 +303,26 @@ def get_user(user_obj):
     return user
 
 def get_chat(chat_id):
+    # Do we need a new model based on time of day?
+    utc_time = datetime.now(pytz.utc)
+    est_time = get_adjusted_dt(utc_time)
+    current_time_of_day = time_of_day(est_time)
+    global model
+   
     if chat_id in chat_dict:
         print(f'continuing conversation with {chat_id}')
         chat = chat_dict[chat_id]
-        return chat
-    
-    print(f"{chat_id} not found, starting new conversation")
-    chat = model.start_chat(history=[])
-    chat_dict[chat_id] = chat
+    else:
+        print(f"{chat_id} not found, starting new conversation")
+        chat = model.start_chat(history=[])
+        chat_dict[chat_id] = chat
+
+    if current_time_of_day != saved_time_of_day:
+        # Need to reinit the model with new time
+        model = reinitialize_model(system_instructions)
+        history = chat.history
+        chat = model.start_chat(history=history)
+        chat_dict[chat_id] = chat
     return chat
 
 def get_photo_and_text(message_text):
