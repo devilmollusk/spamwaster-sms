@@ -3,6 +3,7 @@ from pyrogram.types import Message
 from pyrogram.errors import RPCError
 from dotenv import load_dotenv
 import os
+import sys
 import asyncio
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -19,7 +20,9 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 app = Client("my_account")
-             
+
+starting_directory = os.path.dirname(os.path.abspath(sys.argv[0]))
+
 # Get the value of USE_SSH_TUNNEL
 use_ssh = os.getenv('USE_SSH_TUNNEL', 'False').lower() in ['true', '1', 't', 'y', 'yes']
 
@@ -88,6 +91,7 @@ class Message(Base):
     phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     service = Column(String(255), nullable=True)  # New column for the message service
+    media = Column(String(255))
 
 
 
@@ -290,6 +294,7 @@ async def my_handler(client, message):
     me = await app.get_me()
     id = message.from_user.id
     delay = random.uniform(1, 10)
+    path = ''
     
     if message.from_user.id == me.id:
         return
@@ -324,6 +329,20 @@ async def my_handler(client, message):
         # Check to see if we need to reply with a photo
         photo_path, photo_text = get_photo_and_text(text)
         if photo_path:
+            if user:
+                # Create a new message instance
+                new_message = Message(
+                    prompt=photo_text,
+                    response=response_string,
+                    user_id=user.user_id,
+                    phone=user.phone,
+                    service='Telegram',
+                    media=photo_path
+                )
+                session.add(new_message)
+
+                # Commit the session to save the new message to the database
+                session.commit()
             time.sleep(delay)
             try:
                 await app.send_photo(id, photo_path, photo_text)
@@ -339,13 +358,16 @@ async def my_handler(client, message):
 
         # Write a message instance
         if user:
+            # Calculate the relative path
+            relative_path = os.path.relpath(path, starting_directory)
             # Create a new message instance
             new_message = Message(
                 prompt=text,
                 response=response_string,
                 user_id=user.user_id,
                 phone=user.phone,
-                service='Telegram'
+                service='Telegram',
+                media=relative_path
             )
             session.add(new_message)
 
