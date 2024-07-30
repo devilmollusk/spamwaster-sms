@@ -91,7 +91,8 @@ class Message(Base):
     phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     service = Column(String(255), nullable=True)  # New column for the message service
-    media = Column(String(255))
+    prompt_media = Column(String(255))
+    response_media = Column(String(255))
 
 
 
@@ -294,7 +295,7 @@ async def my_handler(client, message):
     me = await app.get_me()
     id = message.from_user.id
     delay = random.uniform(1, 10)
-    path = ''
+    relatice_path = ''
     
     if message.from_user.id == me.id:
         return
@@ -310,6 +311,7 @@ async def my_handler(client, message):
         # Media message
         print(f'Message contains media: ')
         path = await download_file(message)
+        relative_path = os.path.relpath(path, starting_directory)
         sample_file = genai.upload_file(path, display_name="Sample drawing")
         image_response = model.generate_content([sample_file, "Describe this image"])
         image_description = image_response.text
@@ -332,12 +334,13 @@ async def my_handler(client, message):
             if user:
                 # Create a new message instance
                 new_message = Message(
-                    prompt=photo_text,
-                    response=response_string,
+                    prompt=text,
+                    response=photo_text,
                     user_id=user.user_id,
                     phone=user.phone,
                     service='Telegram',
-                    media=photo_path
+                    response_media=photo_path,
+                    prompt_media=relatice_path
                 )
                 session.add(new_message)
 
@@ -358,8 +361,7 @@ async def my_handler(client, message):
 
         # Write a message instance
         if user:
-            # Calculate the relative path
-            relative_path = os.path.relpath(path, starting_directory)
+            
             # Create a new message instance
             new_message = Message(
                 prompt=text,
@@ -367,7 +369,7 @@ async def my_handler(client, message):
                 user_id=user.user_id,
                 phone=user.phone,
                 service='Telegram',
-                media=relative_path
+                prompt_media=relative_path
             )
             session.add(new_message)
 
