@@ -364,8 +364,9 @@ async def download_file(message):
 #################################
 #   Telegram Message Handler    #
 #################################
-@app.on_message(filters.private)
+@app.on_message()
 async def my_handler(client, message):
+    print(f"OnMessage handler: {client} \n{message}")
     me = await app.get_me()
     id = message.from_user.id
     delay = random.uniform(1, 10)
@@ -456,6 +457,5 @@ async def my_handler(client, message):
         time.sleep(delay)
         
         await message.reply(response_string)
-
 
 app.run()
