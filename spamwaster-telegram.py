@@ -415,7 +415,7 @@ async def my_handler(client, message):
                     phone=user.phone,
                     service='Telegram',
                     response_media=photo_path,
-                    prompt_media=relatice_path
+                    prompt_media=relative_path
                 )
                 session.add(new_message)
 
