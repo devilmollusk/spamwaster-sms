@@ -32,6 +32,10 @@ db_password = os.getenv('DB_PASSWORD')
 db_host = '127.0.0.1' if use_ssh else os.getenv('DB_HOST')
 db_name = os.getenv('DB_NAME')
 
+# Use user history when initializing chat
+USE_HISTORY = True
+USE_DELAY = False
+
 # SQLAlchemy Database URI
 # Define the database URL
 DATABASE_URL = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_host}/{db_name}'
@@ -136,6 +140,26 @@ def time_of_day(dt):
     else:
         return 'late night'
 
+def get_user_history(user):
+    messages = session.query(Message).filter(Message.user_id==user.user_id).order_by(Message.uuid.asc()).limit(10).all()
+    history=[]
+    for message in messages:
+        user_message = {
+            "role": "user",
+            "parts": [
+                message.prompt
+            ]
+        }
+        model_message = {
+            "role": "model",
+            "parts": [
+                message.response
+            ]
+        }
+        history.append(user_message)
+        history.append(model_message)
+    return history
+    
 # Global to store time of day
 saved_time_of_day = 'morning'
 # Global variable for system instructions and instruction mapping
@@ -198,16 +222,16 @@ chat_dict = {}
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 generation_config = {
-    "temperature": 1.7,
+    "temperature": 1,
     "top_p": 0.95,
     "top_k": 64,
-    "max_output_tokens": 250,
+    "max_output_tokens": 1000,
     "response_mime_type": "text/plain",
 }
 model = reinitialize_model(system_instructions)
 
 photo_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-1.5-pro",
     generation_config=generation_config,
     safety_settings={
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -314,7 +338,14 @@ def get_chat(chat_id):
         chat = chat_dict[chat_id]
     else:
         print(f"{chat_id} not found, starting new conversation")
-        chat = model.start_chat(history=[])
+        history = []
+        if USE_HISTORY:
+            # Fetch the history for this user
+            user = session.query(User).filter(User.telegram==chat_id).first()
+            history = get_user_history(user)
+            print(history)
+            
+        chat = model.start_chat(history=history)
         chat_dict[chat_id] = chat
 
     if current_time_of_day != saved_time_of_day:
@@ -414,13 +445,14 @@ async def my_handler(client, message):
                     phone=user.phone,
                     service='Telegram',
                     response_media=photo_path,
-                    prompt_media=relatice_path
+                    prompt_media=relative_path
                 )
                 session.add(new_message)
 
                 # Commit the session to save the new message to the database
                 session.commit()
-            time.sleep(delay)
+            if USE_DELAY:
+                time.sleep(delay)
             try:
                 await app.send_photo(id, photo_path, photo_text)
             except RPCError as e:
@@ -453,7 +485,9 @@ async def my_handler(client, message):
         
         # Delay before we start sending
         delay += count_words(response_string)
-        time.sleep(delay)
+        if USE_DELAY:
+            time.sleep(delay)
+        
         
         await message.reply(response_string)
 
