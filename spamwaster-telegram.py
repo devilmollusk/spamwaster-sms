@@ -20,7 +20,7 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 app = Client("my_account")
-
+my_user = None
 starting_directory = os.path.dirname(os.path.abspath(sys.argv[0]))
 
 # Get the value of USE_SSH_TUNNEL
@@ -194,7 +194,12 @@ def reinitialize_model(instructions_string):
 #   Gemini Setup    #
 #                   #
 #####################
+
+# Cache of chats
 chat_dict = {}
+
+# Cache of users
+user_dict = {}
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 generation_config = {
@@ -325,6 +330,15 @@ def get_chat(chat_id):
         chat_dict[chat_id] = chat
     return chat
 
+async def get_user_info(user_id):
+    user_info = None
+    if user_id in user_dict:
+        user_info = user_dict[user_id]
+    else:
+        user_info = await app.get_users([user_id])
+
+    return user_info
+
 def get_photo_and_text(message_text):
     prime_response = photo_model.generate_content(model_priming)
 
@@ -366,17 +380,21 @@ async def download_file(message):
 #################################
 @app.on_message()
 async def my_handler(client, message):
+    if message.outgoing:
+        return
     print(f"OnMessage handler: {client} \n{message}")
-    me = await app.get_me()
+    global my_user
+    if my_user == None:
+        my_user = await app.get_me()
     id = message.from_user.id
     delay = random.uniform(1, 10)
     relative_path = ''
     
-    if message.from_user.id == me.id:
+    if message.from_user.id == my_user.id:
         return
     text = message.text
     response_string = ''
-    user_info = await app.get_users([message.from_user.id])
+    user_info = await get_user_info(id)
     if user_info:
         user_obj = user_info[0]
         id = user_obj.id
