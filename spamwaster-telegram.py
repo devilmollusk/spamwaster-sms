@@ -15,6 +15,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeT
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# LLama
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,6 +39,9 @@ db_name = os.getenv('DB_NAME')
 # Use user history when initializing chat
 USE_HISTORY = False
 USE_DELAY = True
+USE_HISTORY = True
+USE_DELAY = False
+AI_MODEL="llama" # can be one of llama or gemini
 
 # SQLAlchemy Database URI
 # Define the database URL
@@ -111,6 +118,48 @@ class Message(Base):
     prompt_media = Column(String(255))
     response_media = Column(String(255))
 
+# Chat session class
+class ChatSession:
+    def __init__(self):
+        self.system_instructions = None
+        self.chat_history = []
+
+    def start_chat(self, system_instructions, history=None):
+        """Initializes the chat session with system instructions and optional existing history."""
+        self.system_instructions = system_instructions
+        
+        # Prepend system instructions to the history
+        self.chat_history = [{"role": "system", "content": system_instructions}]
+        
+        # Add existing history if provided, excluding any system instructions already there
+        if history:
+            self.chat_history.extend(history)
+            
+        # Ensure there's only one system instruction entry
+        self.chat_history = [entry for entry in self.chat_history if entry["role"] != "system"] + [{"role": "system", "content": system_instructions}]
+    
+    def send_message(self, message, role="user"):
+        """Sends a message and appends it to the chat history."""
+        # Add the user's message to the history
+        self.chat_history.append({"role": role, "content": message})
+
+        # Simulate a response from the AI model
+        response = self.get_ai_response(self.chat_history)
+
+        # Add the AI's response to the history
+        self.chat_history.append({"role": "assistant", "content": response})
+        
+        return response
+
+    def get_ai_response(self, chat_history):
+        """Simulates getting a response from an AI model. Replace with actual AI call."""
+        # Here, you would implement the logic to communicate with the AI model,
+        # passing the chat history and receiving the model's response.
+        # For this example, we'll just echo the last user message.
+        user_message = chat_history[-1]["content"]
+        response = llama_generate_text(user_message, chat_history)
+        return response
+    
 # Handle time of day
 def get_adjusted_dt(dt):
     est = pytz.timezone('US/Eastern')
@@ -188,6 +237,81 @@ system_instructions = [
     "Keep them engaged but also be curious about them",
     'Keep your answers to 2-3 sentences at most'
 ]
+
+#################
+#   LLaMa 3.1   #
+#################
+
+# Hugging Face Access Token (replace with your own)
+access_token = os.getenv('HUGGING_FACE_ACCESS_TOKEN')
+
+# Model ID from Hugging Face Hub
+model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+# Load tokenizer and model from Hugging Face Hub (requires access token)
+tokenizer = AutoTokenizer.from_pretrained(model_id, token=access_token)
+model = AutoModelForCausalLM.from_pretrained(model_id, token=access_token)
+
+# Move the model to GPU if available, otherwise CPU
+if torch.cuda.is_available():
+    model = model.to("cuda")
+else:
+    model = model.to("cpu")
+
+# Define conversation termination tokens
+terminators = [
+    tokenizer.eos_token_id,  # End-of-sentence token
+    tokenizer.convert_tokens_to_ids("<|eot_id|>"),  # Custom end-of-conversation token
+]
+
+# Maximum allowed input token length
+MAX_INPUT_TOKEN_LENGTH = 4096
+
+def llama_generate_text(message, history=[], temperature=0.7, max_new_tokens=256, system=""):
+    """Generates text based on the given prompt and conversation history.
+
+    Args:
+        message: The user's prompt.
+        history: A list of tuples containing user and assistant messages.
+        temperature: Controls randomness in generation.
+        max_new_tokens: Maximum number of tokens to generate.
+        system: Optional system prompt.
+
+    Returns:
+        The generated text.
+    """
+
+    conversation = []
+    if system:
+        conversation.append({"role": "system", "content": system})
+
+    if history:
+        conversation.extend(history)
+    conversation.append({"role": "user", "content": message})
+
+    input_ids = tokenizer.apply_chat_template(conversation, return_tensors="pt")
+
+    if input_ids.shape[1] > MAX_INPUT_TOKEN_LENGTH:
+        input_ids = input_ids[:, -MAX_INPUT_TOKEN_LENGTH:]   
+
+
+    input_ids = input_ids.to(model.device)   
+
+
+    generate_kwargs = {
+        "input_ids": input_ids,
+        "max_length": max_new_tokens + input_ids.shape[1],  # Adjust for total length
+        "do_sample": temperature != 0,  # Use sampling for non-zero temperature (randomness)
+        "temperature": temperature,
+        "eos_token_id": terminators,  # Specify tokens to stop generation
+    }
+
+    output = model.generate(**generate_kwargs)[0]
+    response = tokenizer.decode(output, skip_special_tokens=True)
+
+    return response
+
+#######################################
 def reinitialize_model(instructions_string):
     utc_time = datetime.now(pytz.utc)
     est_time = get_adjusted_dt(utc_time)
@@ -337,7 +461,7 @@ def get_chat(chat_id):
     est_time = get_adjusted_dt(utc_time)
     current_time_of_day = time_of_day(est_time)
     global model
-   
+    global saved_time_of_day
     if chat_id in chat_dict:
         print(f'continuing conversation with {chat_id}')
         chat = chat_dict[chat_id]
@@ -349,15 +473,35 @@ def get_chat(chat_id):
             user = session.query(User).filter(User.telegram==chat_id).first()
             history = get_user_history(user)
             print(history)
-            
-        chat = model.start_chat(history=history)
+        if AI_MODEL == 'gemini':    
+            chat = model.start_chat(history=history)
+        elif AI_MODEL == 'llama':
+            utc_time = datetime.now(pytz.utc)
+            est_time = get_adjusted_dt(utc_time)
+            current_time_of_day = time_of_day(est_time)
+            new_instructions = system_instructions + [f"Current time of day is {current_time_of_day}"]
+            saved_time_of_day = current_time_of_day
+            chat = ChatSession()
+            chat.start_chat(new_instructions)
         chat_dict[chat_id] = chat
 
     if current_time_of_day != saved_time_of_day:
+        chat = None
         # Need to reinit the model with new time
-        model = reinitialize_model(system_instructions)
-        history = chat.history
-        chat = model.start_chat(history=history)
+        if AI_MODEL == 'gemini':
+            model = reinitialize_model(system_instructions)
+            history = chat.history
+            chat = model.start_chat(history=history)
+        elif AI_MODEL == 'llama':
+            utc_time = datetime.now(pytz.utc)
+            est_time = get_adjusted_dt(utc_time)
+            current_time_of_day = time_of_day(est_time)
+            
+            new_instructions = system_instructions + [f"Current time of day is {current_time_of_day}"]
+            saved_time_of_day = current_time_of_day
+            history = chat.history
+            chat = ChatSession()
+            chat.start_chat(new_instructions, history)
         chat_dict[chat_id] = chat
     return chat
 
