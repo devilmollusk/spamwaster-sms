@@ -200,8 +200,16 @@ def time_of_day(dt):
     else:
         return 'late night'
 
+def get_last_10_messages(user_id):
+    messages = (
+        session.query(Message)
+        .filter(Message.user_id == user_id)
+        .order_by(Message.uuid.asc())
+        .all()
+    )
+    return messages[-10:]
 def get_user_history(user):
-    messages = session.query(Message).filter(Message.user_id==user.user_id).order_by(Message.uuid.asc()).limit(10).all()
+    messages = get_last_10_messages(user.user_id)
     history=[]
     if 'llama' in AI_MODEL:
         for message in messages:
@@ -271,6 +279,7 @@ llama_instructions = "Your role is to engage scammers in conversation and keep t
     You are not to releval that you are a bot. Pretend to be human \
     Keep them engaged but also be curious about them\
     Do not threaten to report them unless they threaten you \
+    You can admit to getting confused sometimes because of your age \
     Keep your answers to 2-3 sentences at most."
 
 #################
@@ -284,7 +293,7 @@ access_token = os.getenv('HUGGING_FACE_ACCESS_TOKEN')
 def assistant(content: str):
     return { "role": "assistant", "content": content }
 
-def user(content: str):
+def llama_user(content: str):
     return { "role": "user", "content": content }
 
 def system(content: str):
@@ -312,7 +321,7 @@ def completion(
     top_p: float = 0.9,
 ) -> str:
     return chat_completion(
-        [user(prompt)],
+        [llama_user(prompt)],
         model=model,
         temperature=temperature,
         top_p=top_p,
@@ -321,33 +330,33 @@ def completion(
 def is_photo(text):
     return chat_completion(
         [system('You are trying to determine if the user input is a request to share a photo over text. Respond with yes or no, along with a determination as to what sort of photo is being requested'),
-        user("can you send me a photo of you"),
+        llama_user("can you send me a photo of you"),
         assistant("yes. profile photo"),
-        user("Can you take a picture of the Coinbase app and send it to me?"),
+        llama_user("Can you take a picture of the Coinbase app and send it to me?"),
         assistant("yes. screenshot"),
-        user("What sort of dogs do you have?"),
+        llama_user("What sort of dogs do you have?"),
         assistant("no"),
-        user("Can you send me a picture of your dogs?"),
+        llama_user("Can you send me a picture of your dogs?"),
         assistant("yes. pet photo"),
-        user("Can you show me what you look like?"),
+        llama_user("Can you show me what you look like?"),
         assistant("yes. profile photo"),
-        user("Can you show me what you look like?"),
+        llama_user("Can you show me what you look like?"),
         assistant("yes. profile photo"),
-        user("Where are your photos?"),
+        llama_user("Where are your photos?"),
         assistant("yes. profile photo"),
-        user("Do you have any recent photos of your mom?"),
+        llama_user("Do you have any recent photos of your mom?"),
         assistant("yes. family photo"),
-        user("Can you show me what you look like?"),
+        llama_user("Can you show me what you look like?"),
         assistant("yes. profile photo"),
-        user("Show me what you look like"),
+        llama_user("Show me what you look like"),
         assistant("yes. profile photo"),
-        user("What do you look like?"),
+        llama_user("What do you look like?"),
         assistant("yes. profile photo"),
-        user("What does your mom look like?"),
+        llama_user("What does your mom look like?"),
         assistant("yes. family photo"),
-        user("Where are your photos?"),
+        llama_user("Where are your photos?"),
         assistant("yes. profile photo"),
-        user(text),
+        llama_user(text),
 
     ]
     )
@@ -696,7 +705,7 @@ async def my_handler(client, message):
         image_description = image_response.text
         response = chat.send_message(image_description)
         if 'llama' in AI_MODEL:
-            response_string = "(Llama)" + response
+            response_string = response
         else:
             response_string = response.text
         #await message.reply(response_string)
@@ -709,7 +718,7 @@ async def my_handler(client, message):
         # Get Model response
         response = chat.send_message(text)
         if 'llama' in AI_MODEL:
-            response_string = "(Llama)" + response
+            response_string = response
         else:
             response_string = response.text
 
@@ -735,6 +744,8 @@ async def my_handler(client, message):
                 time.sleep(delay)
             try:
                 await app.send_photo(id, photo_path, photo_text)
+                chat.chat_history.append(llama_user(text))
+                chat.chat_history.append(system(f"You sent a photo and this text: {photo_text}"))
             except RPCError as e:
                 print(f"error sending photo {e}")
             return
