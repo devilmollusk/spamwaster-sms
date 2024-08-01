@@ -39,6 +39,11 @@ db_name = os.getenv('DB_NAME')
 # Use user history when initializing chat
 USE_HISTORY = False
 USE_DELAY = True
+<<<<<<< Updated upstream
+=======
+USE_HISTORY = True
+USE_DELAY = False
+>>>>>>> Stashed changes
 AI_MODEL="llama" # can be one of llama or gemini
 
 # SQLAlchemy Database URI
