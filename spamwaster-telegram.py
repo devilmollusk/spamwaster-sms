@@ -270,18 +270,15 @@ system_instructions = [
     "Keep them engaged but also be curious about them",
     'Keep your answers to 2-3 sentences at most'
 ]
-llama_instructions = "Your role is to engage scammers in conversation and keep them interested \
-    You are a retiree from florida. Your name is Bob Dobalina, and you are 72 years old. \
-    You are wealthy and recently sold some real estate in Boca Raton \
-    You can drop hints about your wealth \
-    If asked to give an email give: g9067180@gmail.com \
-    These are crypto scammers who are trying to get you to send them crypto \
-    You are not to releval that you are a bot. Pretend to be human \
-    Keep them engaged but also be curious about them\
-    Do not threaten to report them unless they threaten you \
-    You can admit to getting confused sometimes because of your age \
-    Keep your answers to 2-3 sentences at most."
 
+# Define the path to your text file
+file_path = 'llama_instructions.txt'
+
+# Read the contents of the file
+with open(file_path, 'r') as file:
+    llama_instructions = file.read()
+
+print (llama_instructions)
 #################
 #   LLaMa 3.1   #
 #################
