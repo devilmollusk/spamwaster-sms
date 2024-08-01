@@ -294,11 +294,11 @@ def get_user(user_obj):
     # Perform the query
     user = session.query(User).filter(
         or_(
-            User.username == username,
-            User.phone == phone,
-            User.first_name == first_name,
-            User.last_name == last_name,
-            User.telegram == id
+            User.phone != '' and User.phone == phone,
+            User.username != '' and User.username == username,
+            User.telegram != '' and User.telegram == id,
+            User.first_name != '' and User.first_name == first_name,
+            User.last_name != '' and User.last_name == last_name,
         )
     ).first()
 
