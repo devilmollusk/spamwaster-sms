@@ -230,13 +230,13 @@ generation_config = {
     "temperature": 1,
     "top_p": 0.95,
     "top_k": 64,
-    "max_output_tokens": 1000,
+    "max_output_tokens": 500,
     "response_mime_type": "text/plain",
 }
 model = reinitialize_model(system_instructions)
 
 photo_model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-1.5-flash",
     generation_config=generation_config,
     safety_settings={
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
