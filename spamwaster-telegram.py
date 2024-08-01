@@ -224,6 +224,8 @@ chat_dict = {}
 
 # Cache of users
 user_dict = {}
+
+processed_messages = []
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 generation_config = {
@@ -409,11 +411,12 @@ async def download_file(message):
 #################################
 #   Telegram Message Handler    #
 #################################
-@app.on_message()
+@app.on_message(filters.text | filters.photo)
 async def my_handler(client, message):
-    if message.outgoing:
+    if message.outgoing or message.id in processed_messages:
         return
     print(f"OnMessage handler: {client} \n{message}")
+    processed_messages.append(message.id)
     global my_user
     if my_user == None:
         my_user = await app.get_me()
