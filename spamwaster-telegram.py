@@ -198,7 +198,7 @@ def reinitialize_model(instructions_string):
     print (f"Time of day is: {saved_time_of_day}")
 
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-1.5-pro",
         generation_config=generation_config,
         safety_settings={
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
