@@ -34,7 +34,7 @@ db_name = os.getenv('DB_NAME')
 
 # Use user history when initializing chat
 USE_HISTORY = True
-USE_DELAY = False
+USE_DELAY = True
 
 # SQLAlchemy Database URI
 # Define the database URL
