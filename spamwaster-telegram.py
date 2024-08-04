@@ -21,6 +21,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from typing import Dict, List
 from groq import Groq
+from huggingface_hub import login
 
 
 # Load environment variables from .env file
@@ -42,6 +43,7 @@ db_name = os.getenv('DB_NAME')
 # Use user history when initializing chat
 USE_HISTORY =  os.getenv('USE_HISTORY', 'False').lower() in ['true', '1', 't', 'y', 'yes']
 USE_DELAY =  os.getenv('USE_DELAY', 'False').lower() in ['true', '1', 't', 'y', 'yes']
+USE_HOSTED_LLAMA = os.getenv('USE_HOSTED_LLAMA', 'False').lower() in ['true', '1', 't', 'y', 'yes']
 AI_MODEL=os.getenv('AI_MODEL')
 
 # Groq AI testing
@@ -99,8 +101,8 @@ class User(Base):
     __tablename__ = 'user'
     user_id = Column(Integer, primary_key=True)
     username = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False)
-    phone = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(255), unique=True, nullable=True)
     consent = Column(Boolean, nullable=False)
     favorite = Column(Boolean, default=False)
     telegram = Column(String(255), nullable=True)
@@ -304,12 +306,15 @@ def chat_completion(
         temperature: float = 0.6,
         top_p: float = 0.9,
     ) -> str:
-        response = llama_client.chat.completions.create(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            top_p=top_p,
-        )
+        if USE_HOSTED_LLAMA:
+            response = llama_client.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        else:
+            llama_generate_text(messages)
         return response.choices[0].message.content
 def completion(
     prompt: str,
@@ -357,27 +362,28 @@ def is_photo(text):
 
     ]
     )
-'''
-# Load tokenizer and model from Hugging Face Hub (requires access token)
-tokenizer = AutoTokenizer.from_pretrained(model_id, token=access_token)
-model = AutoModelForCausalLM.from_pretrained(model_id, token=access_token)
 
-# Move the model to GPU if available, otherwise CPU
-if torch.cuda.is_available():
-    model = model.to("cuda")
-else:
-    model = model.to("cpu")
+if not USE_HOSTED_LLAMA:
+    # Load tokenizer and model from Hugging Face Hub (requires access token)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=access_token)
+    model = AutoModelForCausalLM.from_pretrained(model_id, token=access_token)
 
-# Define conversation termination tokens
-terminators = [
-    tokenizer.eos_token_id,  # End-of-sentence token
-    tokenizer.convert_tokens_to_ids("<|eot_id|>"),  # Custom end-of-conversation token
-]
+    # Move the model to GPU if available, otherwise CPU
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+    else:
+        model = model.to("cpu")
 
-# Maximum allowed input token length
-MAX_INPUT_TOKEN_LENGTH = 4096
+    # Define conversation termination tokens
+    terminators = [
+        tokenizer.eos_token_id,  # End-of-sentence token
+        tokenizer.convert_tokens_to_ids("<|eot_id|>"),  # Custom end-of-conversation token
+    ]
 
-def llama_generate_text(message, history=[], temperature=0.7, max_new_tokens=256, system=""):
+    # Maximum allowed input token length
+    MAX_INPUT_TOKEN_LENGTH = 4096
+
+def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
     """Generates text based on the given prompt and conversation history.
 
     Args:
@@ -391,15 +397,7 @@ def llama_generate_text(message, history=[], temperature=0.7, max_new_tokens=256
         The generated text.
     """
 
-    conversation = []
-    if system:
-        conversation.append({"role": "system", "content": system})
-
-    if history:
-        conversation.extend(history)
-    conversation.append({"role": "user", "content": message})
-
-    input_ids = tokenizer.apply_chat_template(conversation, return_tensors="pt")
+    input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt")
 
     if input_ids.shape[1] > MAX_INPUT_TOKEN_LENGTH:
         input_ids = input_ids[:, -MAX_INPUT_TOKEN_LENGTH:]   
@@ -420,7 +418,7 @@ def llama_generate_text(message, history=[], temperature=0.7, max_new_tokens=256
     response = tokenizer.decode(output, skip_special_tokens=True)
 
     return response
-'''
+
 #######################################
 def reinitialize_gemini_model(instructions_string):
     utc_time = datetime.now(pytz.utc)
@@ -519,10 +517,10 @@ def count_words(text):
     return len(words)
 
 def get_user(user_obj):
-    phone = '+' + user_obj.phone_number if user_obj.phone_number else None
-    first_name = user_obj.first_name if user_obj.first_name else None
-    last_name = user_obj.last_name if user_obj.last_name else None
-    username = user_obj.username if user_obj.username else None
+    phone = '+' + user_obj.phone_number if user_obj.phone_number else ''
+    first_name = user_obj.first_name if user_obj.first_name else ''
+    last_name = user_obj.last_name if user_obj.last_name else ''
+    username = user_obj.username if user_obj.username else ''
     id = user_obj.id
 
     # Try to find the user 
