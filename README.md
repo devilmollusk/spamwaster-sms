@@ -1,18 +1,18 @@
 # SpamWaster-SMS
 
-SpamWaster-SMS is a Python Flask application that sets up phone numbers and WhatsApp accounts to chat with spammers using Large Language Models like Gemini, Claude, and ChatGPT. The app has dedicated paths to handle events from chat services like Twilio, Vonage, and Postack.
+SpamWaster-telegram is a Python application that allows you to use a Telegram app to respond to messages using an LLM backed chat bot
 
 ## Features
 
 - Automatically respond to spam messages using LLMs (Gemini, Claude, ChatGPT)
-- Handle SMS and WhatsApp messages from various services
+- Handle Telegram messages
 - Easy setup and configuration with environment variables
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.6+
 - Flask
-- API accounts with Twilio, Vonage, and Postack
+- API accounts with Groq, Telegram, and db credentials
 
 ## Installation
 
@@ -39,50 +39,28 @@ SpamWaster-SMS is a Python Flask application that sets up phone numbers and What
 4. **Create a `.env` file in the root directory and add your API keys and secrets:**
 
     ```plaintext
-    TWILIO_ACCOUNT_SID=your_twilio_account_sid
-    TWILIO_AUTH_TOKEN=your_twilio_auth_token
-    TWILIO_PHONE_NUMBER=your_twilio_phone_number
-
-    VONAGE_API_KEY=your_vonage_api_key
-    VONAGE_API_SECRET=your_vonage_api_secret
-    VONAGE_PHONE_NUMBER=your_vonage_phone_number
-
-    POSTACK_API_KEY=your_postack_api_key
-    POSTACK_API_SECRET=your_postack_api_secret
-    POSTACK_PHONE_NUMBER=your_postack_phone_number
-
-    GEMINI_API_KEY=your_gemini_api_key
-    CLAUDE_API_KEY=your_claude_api_key
-    CHATGPT_API_KEY=your_chatgpt_api_key
-    ```
-
+    DB_USER=username
+    DB_PASSWORD=password
+    DB_HOST=dbhost
+    DB_NAME=dbname
+    OPENAI_API_KEY=needed to use OpenAI models
+    OPENAI_API_URL=eeded to use OpenAI models
+    TELEGRAPH_APP_ID=contact Telegram to get this
+    TELEGRAPH_API_HASH=contact Telegram to get this
+    TELEGRAPH_PHONE=your telegram phone number
+    HUGGING_FACE_ACCESS_TOKEN=contact Hugging Face to use this for model inference
+    USE_HISTORY=True <-- use this variable to use stored messages as history context
+    USE_DELAY=False <-- use this variable to add a random delay to responses
+    AI_MODEL=name of the AI model
+    GROQ_API_KEY=contact Groq to acquire a key and use models through their api
 ## Usage
 
-1. **Run the Flask application:**
+**Run the Python application:**
 
     ```bash
-    flask run
+    python spamwaster-telegram.py
     ```
 
-2. **Expose your local server to the internet using a tool like ngrok (for local development):**
-
-    ```bash
-    ngrok http 5000
-    ```
-
-3. **Configure your Twilio, Vonage, and Postack webhooks to point to your public ngrok URL. For example:**
-
-    ```
-    https://your-ngrok-url.ngrok.io/twilio
-    https://your-ngrok-url.ngrok.io/vonage
-    https://your-ngrok-url.ngrok.io/postack
-    ```
-
-## Flask Routes
-
-- `/twilio`: Handles incoming messages from Twilio.
-- `/vonage`: Handles incoming messages from Vonage.
-- `/postack`: Handles incoming messages from Postack.
 
 ## Contributing
 
