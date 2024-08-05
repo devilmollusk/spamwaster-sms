@@ -588,6 +588,7 @@ def get_chat(chat_id):
     utc_time = datetime.now(pytz.utc)
     est_time = get_adjusted_dt(utc_time)
     current_time_of_day = time_of_day(est_time)
+    chat = None
     global model
     global saved_time_of_day
     if chat_id in chat_dict:
@@ -614,7 +615,7 @@ def get_chat(chat_id):
         chat_dict[chat_id] = chat
 
     if current_time_of_day != saved_time_of_day:
-        chat = None
+        
         # Need to reinit the model with new time
         if 'gemini' in AI_MODEL:
             model = reinitialize_gemini_model(system_instructions)
