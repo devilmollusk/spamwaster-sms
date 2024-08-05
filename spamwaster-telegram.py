@@ -170,6 +170,7 @@ class ChatSession:
         # For this example, we'll just echo the last user message.
         user_message = chat_history[-1]["content"]
         print(json.dumps(chat_history, indent=4))
+        #print (user_message)
         response = chat_completion(chat_history)
         return response
     
@@ -215,29 +216,33 @@ def get_user_history(user):
     history=[]
     if 'llama' in AI_MODEL:
         for message in messages:
+            prompt = message.prompt if message.prompt else ''
+            response = message.response if message.response else ''
             user_message = {
                 "role": "user",
-                "content": message.prompt
+                "content": prompt
 
             }
             model_message = {
                 "role": "assistant",
-                "content": message.response
+                "content": response
             }
             history.append(user_message)
             history.append(model_message)
     else:
         for message in messages:
+            prompt = message.prompt if message.prompt else ''
+            response = message.response if message.response else ''
             user_message = {
                 "role": "user",
                 "parts": [
-                    message.prompt
+                    prompt
                 ]
             }
             model_message = {
                 "role": "model",
                 "parts": [
-                    message.response
+                    response
                 ]
             }
             history.append(user_message)
@@ -465,6 +470,20 @@ generation_config = {
     "max_output_tokens": 500,
     "response_mime_type": "text/plain",
 }
+
+# TODO: need to use LLama for photo eval
+photo_eval_model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config=generation_config,
+        safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            },
+
+        system_instruction="your role is to evaluate an image and describe what the image depicts in 2 sentences",
+    )
 if 'gemin' in AI_MODEL:
     model = reinitialize_gemini_model(system_instructions)
 
@@ -696,9 +715,10 @@ async def my_handler(client, message):
         path = await download_file(message)
         relative_path = os.path.relpath(path, starting_directory)
         sample_file = genai.upload_file(path, display_name="Sample drawing")
-        image_response = model.generate_content([sample_file, "Describe this image"])
+        image_response = photo_eval_model.generate_content([sample_file, "Describe this image"])
         image_description = image_response.text
-        response = chat.send_message(image_description)
+        model_input = f"An image was sent with this description: {image_description}"
+        response = chat.send_message(model_input)
         if 'llama' in AI_MODEL:
             response_string = response
         else:
