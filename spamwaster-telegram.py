@@ -70,12 +70,10 @@ engine = create_engine(DATABASE_URL, **engine_options)
 # Create a base class for declarative class definitions
 Base = declarative_base()
 
-# Create the table
-Base.metadata.create_all(engine)
-
 # Create a session
 Session = sessionmaker(bind=engine)
 session = Session()
+session.rollback()
 
 # Upload the photo file
 photo_dir = "./static/"
@@ -124,11 +122,14 @@ class Message(Base):
     prompt = Column(UnicodeText, nullable=False)
     response = Column(UnicodeText, nullable=False)
     user_id = Column(Integer, ForeignKey('user.user_id'), nullable=False)
-    phone = Column(String, nullable=True)
+    phone = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     service = Column(String(255), nullable=True)  # New column for the message service
     prompt_media = Column(String(255))
     response_media = Column(String(255))
+
+# Create the table
+Base.metadata.create_all(engine)
 
 # Chat session class
 class ChatSession:
@@ -297,11 +298,33 @@ access_token = os.getenv('HUGGING_FACE_ACCESS_TOKEN')
 def assistant(content: str):
     return { "role": "assistant", "content": content }
 
+def assistant_json(content: json):
+    return { "role": "assisntant", "content": content}
+
 def llama_user(content: str):
     return { "role": "user", "content": content }
 
 def system(content: str):
     return { "role": "system", "content": content }
+
+def construct_prompt(examples, new_input=None):
+    """
+    Constructs a prompt for an LLM with given examples and a new input.
+
+    :param examples: List of tuples, each containing (input_text, output_dict).
+    :param new_input: Optional new input string for which to generate a response.
+    :return: Constructed prompt string.
+    """
+    prompt = "The following are examples of inputs and their corresponding JSON outputs:\n\n"
+    for input_text, output_dict in examples:
+        prompt += f"Input: {input_text}\n"
+        prompt += f"Output: {json.dumps(output_dict)}\n\n"
+
+    if new_input:
+        prompt += f"Input: {new_input}\n"
+        prompt += "Output: "
+
+    return prompt
 
 # Model ID from Hugging Face Hub
 model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
@@ -335,34 +358,20 @@ def completion(
     )
 
 def is_photo(text):
+    system_prompt = """
+        You are trying to determine if the user input is a request to share a photo over text. 
+        Respond with yes or no, along with a determination as to what sort of photo is being requested. 
+        Return in JSON format like:
+         {
+            "is_photo": bool,
+            "photo_type": str
+         }
+    """
     return chat_completion(
-        [system('You are trying to determine if the user input is a request to share a photo over text. Respond with yes or no, along with a determination as to what sort of photo is being requested'),
+        [system(system_prompt),
         llama_user("can you send me a photo of you"),
-        assistant("yes. profile photo"),
-        llama_user("Can you take a picture of the Coinbase app and send it to me?"),
-        assistant("yes. screenshot"),
-        llama_user("What sort of dogs do you have?"),
-        assistant("no"),
-        llama_user("Can you send me a picture of your dogs?"),
-        assistant("yes. pet photo"),
-        llama_user("Can you show me what you look like?"),
-        assistant("yes. profile photo"),
-        llama_user("Can you show me what you look like?"),
-        assistant("yes. profile photo"),
-        llama_user("Where are your photos?"),
-        assistant("yes. profile photo"),
-        llama_user("Do you have any recent photos of your mom?"),
-        assistant("yes. family photo"),
-        llama_user("Can you show me what you look like?"),
-        assistant("yes. profile photo"),
-        llama_user("Show me what you look like"),
-        assistant("yes. profile photo"),
-        llama_user("What do you look like?"),
-        assistant("yes. profile photo"),
-        llama_user("What does your mom look like?"),
-        assistant("yes. family photo"),
-        llama_user("Where are your photos?"),
-        assistant("yes. profile photo"),
+        assistant(" { \"is_photo\": \"yes\", \"profile_photo\": \"profile photo\" }"),
+    
         llama_user(text),
 
     ]
@@ -470,11 +479,18 @@ generation_config = {
     "max_output_tokens": 500,
     "response_mime_type": "text/plain",
 }
+photo_config = {
+    "temperature": 0,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 500,
+    "response_mime_type": "text/plain",
+}
 
 # TODO: need to use LLama for photo eval
 photo_eval_model = genai.GenerativeModel(
         model_name="gemini-1.5-flash",
-        generation_config=generation_config,
+        generation_config=photo_config,
         safety_settings={
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -497,7 +513,9 @@ if 'gemin' in AI_MODEL:
                 HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
             },
 
-        system_instruction="Your job is to determine whether the input text is specifically asking the user to upload a photo. You should respond with yes or no, and if you a short description of the type of photo being asked for, such as \"profile photo\" or \"screenshot\"",
+        system_instruction="""
+            Your job it to determine whether the prompt is a request to share a photo
+        """
     )
     model_priming = [
     "Your job is to determine if the input text is asking for a photo. You can respond with yes or no. In the case of yes, give a brief description of what sort of photo is being asked for, like \"profile photo\" and \"screenshot\"",
@@ -653,6 +671,7 @@ def get_photo_and_text(message_text):
         
     elif 'llama' in AI_MODEL:
         response_text = is_photo(message_text)
+        print (response_text)
     print(f"asking for a photo? {response_text}")
     
     if 'yes' in response_text.lower():
@@ -724,6 +743,7 @@ async def my_handler(client, message):
             response_string = response
         else:
             response_string = response.text
+        text = model_input
         #await message.reply(response_string)
     elif text:
         # Get current time for EST
