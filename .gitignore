@@ -1,7 +1,7 @@
 verify_signed_webhooks.py
 get-pip.py
 .DS_Store
-.env
+.env*
 rlenv/
 simple_app.py
 
