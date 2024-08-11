@@ -4,6 +4,7 @@ from pyrogram.errors import RPCError
 from dotenv import load_dotenv
 import os
 import sys
+import json
 import asyncio
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -14,6 +15,13 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeText, ForeignKey, DateTime, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+# LLama
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+from typing import Dict, List
+from groq import Groq
+from huggingface_hub import login
 
 
 # Load environment variables from .env file
@@ -33,9 +41,20 @@ db_host = '127.0.0.1' if use_ssh else os.getenv('DB_HOST')
 db_name = os.getenv('DB_NAME')
 
 # Use user history when initializing chat
-USE_HISTORY = False
-USE_DELAY = True
+USE_HISTORY =  os.getenv('USE_HISTORY', 'False').lower() in ['true', '1', 't', 'y', 'yes']
+USE_DELAY =  os.getenv('USE_DELAY', 'False').lower() in ['true', '1', 't', 'y', 'yes']
+USE_HOSTED_LLAMA = os.getenv('USE_HOSTED_LLAMA', 'False').lower() in ['true', '1', 't', 'y', 'yes']
+AI_MODEL=os.getenv('AI_MODEL')
 
+# Groq AI testing
+os.environ["GROQ_API_KEY"] = os.getenv('GROQ_API_KEY')
+
+LLAMA3_70B_INSTRUCT = "llama3-70b-8192"
+LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
+
+DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
+
+llama_client = Groq()
 # SQLAlchemy Database URI
 # Define the database URL
 DATABASE_URL = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_host}/{db_name}'
@@ -51,12 +70,10 @@ engine = create_engine(DATABASE_URL, **engine_options)
 # Create a base class for declarative class definitions
 Base = declarative_base()
 
-# Create the table
-Base.metadata.create_all(engine)
-
 # Create a session
 Session = sessionmaker(bind=engine)
 session = Session()
+session.rollback()
 
 # Upload the photo file
 photo_dir = "./static/"
@@ -82,8 +99,8 @@ class User(Base):
     __tablename__ = 'user'
     user_id = Column(Integer, primary_key=True)
     username = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False)
-    phone = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(255), unique=True, nullable=True)
     consent = Column(Boolean, nullable=False)
     favorite = Column(Boolean, default=False)
     telegram = Column(String(255), nullable=True)
@@ -105,12 +122,59 @@ class Message(Base):
     prompt = Column(UnicodeText, nullable=False)
     response = Column(UnicodeText, nullable=False)
     user_id = Column(Integer, ForeignKey('user.user_id'), nullable=False)
-    phone = Column(String, nullable=True)
+    phone = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     service = Column(String(255), nullable=True)  # New column for the message service
     prompt_media = Column(String(255))
     response_media = Column(String(255))
 
+# Create the table
+Base.metadata.create_all(engine)
+
+# Chat session class
+class ChatSession:
+    def __init__(self):
+        self.system_instructions = None
+        self.chat_history = []
+
+    def start_chat(self, system_instructions, history=None):
+        """Initializes the chat session with system instructions and optional existing history."""
+        self.system_instructions = system_instructions
+        
+        # Prepend system instructions to the history
+        self.chat_history = [{"role": "system", "content": system_instructions}]
+        
+        # Add existing history if provided, excluding any system instructions already there
+        if history:
+            self.chat_history.extend(history)
+            
+        # Ensure there's only one system instruction entry
+        #self.chat_history = [entry for entry in self.chat_history if entry["role"] != "system"] + [{"role": "system", "content": system_instructions}]
+        print(f"Starting LLama chat with: {self.chat_history}")
+    def send_message(self, message, role="user"):
+        """Sends a message and appends it to the chat history."""
+        # Add the user's message to the history
+        self.chat_history.append({"role": role, "content": message})
+
+        # Simulate a response from the AI model
+        response = self.get_ai_response(self.chat_history)
+
+        # Add the AI's response to the history
+        self.chat_history.append({"role": "assistant", "content": response})
+        
+        return response
+    
+    def get_ai_response(self, chat_history):
+        """Simulates getting a response from an AI model. Replace with actual AI call."""
+        # Here, you would implement the logic to communicate with the AI model,
+        # passing the chat history and receiving the model's response.
+        # For this example, we'll just echo the last user message.
+        user_message = chat_history[-1]["content"]
+        print(json.dumps(chat_history, indent=4))
+        #print (user_message)
+        response = chat_completion(chat_history)
+        return response
+    
 # Handle time of day
 def get_adjusted_dt(dt):
     est = pytz.timezone('US/Eastern')
@@ -140,24 +204,50 @@ def time_of_day(dt):
     else:
         return 'late night'
 
+def get_last_10_messages(user_id):
+    messages = (
+        session.query(Message)
+        .filter(Message.user_id == user_id)
+        .order_by(Message.uuid.asc())
+        .all()
+    )
+    return messages[-10:]
 def get_user_history(user):
-    messages = session.query(Message).filter(Message.user_id==user.user_id).order_by(Message.uuid.asc()).limit(10).all()
+    messages = get_last_10_messages(user.user_id)
     history=[]
-    for message in messages:
-        user_message = {
-            "role": "user",
-            "parts": [
-                message.prompt
-            ]
-        }
-        model_message = {
-            "role": "model",
-            "parts": [
-                message.response
-            ]
-        }
-        history.append(user_message)
-        history.append(model_message)
+    if 'llama' in AI_MODEL:
+        for message in messages:
+            prompt = message.prompt if message.prompt else ''
+            response = message.response if message.response else ''
+            user_message = {
+                "role": "user",
+                "content": prompt
+
+            }
+            model_message = {
+                "role": "assistant",
+                "content": response
+            }
+            history.append(user_message)
+            history.append(model_message)
+    else:
+        for message in messages:
+            prompt = message.prompt if message.prompt else ''
+            response = message.response if message.response else ''
+            user_message = {
+                "role": "user",
+                "parts": [
+                    prompt
+                ]
+            }
+            model_message = {
+                "role": "model",
+                "parts": [
+                    response
+                ]
+            }
+            history.append(user_message)
+            history.append(model_message)
     return history
     
 # Global to store time of day
@@ -188,7 +278,163 @@ system_instructions = [
     "Keep them engaged but also be curious about them",
     'Keep your answers to 2-3 sentences at most'
 ]
-def reinitialize_model(instructions_string):
+
+# Define the path to your text file
+file_path = 'llama_instructions.txt'
+
+# Read the contents of the file
+with open(file_path, 'r') as file:
+    llama_instructions = file.read()
+
+print (llama_instructions)
+#################
+#   LLaMa 3.1   #
+#################
+
+# Hugging Face Access Token (replace with your own)
+access_token = os.getenv('HUGGING_FACE_ACCESS_TOKEN')
+
+# Helper functions
+def assistant(content: str):
+    return { "role": "assistant", "content": content }
+
+def assistant_json(content: json):
+    return { "role": "assisntant", "content": content}
+
+def llama_user(content: str):
+    return { "role": "user", "content": content }
+
+def system(content: str):
+    return { "role": "system", "content": content }
+
+def construct_prompt(examples, new_input=None):
+    """
+    Constructs a prompt for an LLM with given examples and a new input.
+
+    :param examples: List of tuples, each containing (input_text, output_dict).
+    :param new_input: Optional new input string for which to generate a response.
+    :return: Constructed prompt string.
+    """
+    prompt = "The following are examples of inputs and their corresponding JSON outputs:\n\n"
+    for input_text, output_dict in examples:
+        prompt += f"Input: {input_text}\n"
+        prompt += f"Output: {json.dumps(output_dict)}\n\n"
+
+    if new_input:
+        prompt += f"Input: {new_input}\n"
+        prompt += "Output: "
+
+    return prompt
+
+# Model ID from Hugging Face Hub
+model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+def chat_completion(
+        messages: List[Dict],
+        model = DEFAULT_MODEL,
+        temperature: float = 0.6,
+        top_p: float = 0.9,
+    ) -> str:
+        if USE_HOSTED_LLAMA:
+            response = llama_client.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        else:
+            llama_generate_text(messages)
+        return response.choices[0].message.content
+def completion(
+    prompt: str,
+    model: str = DEFAULT_MODEL,
+    temperature: float = 0.6,
+    top_p: float = 0.9,
+) -> str:
+    return chat_completion(
+        [llama_user(prompt)],
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+    )
+
+def is_photo(text):
+    system_prompt = """
+        You are trying to determine if the user input is a request to share a photo over text. 
+        Respond with yes or no, along with a determination as to what sort of photo is being requested. 
+        Return in JSON format like:
+         {
+            "is_photo": bool,
+            "photo_type": str
+         }
+    """
+    return chat_completion(
+        [system(system_prompt),
+        llama_user("can you send me a photo of you"),
+        assistant(" { \"is_photo\": \"yes\", \"profile_photo\": \"profile photo\" }"),
+    
+        llama_user(text),
+
+    ]
+    )
+
+if not USE_HOSTED_LLAMA:
+    # Load tokenizer and model from Hugging Face Hub (requires access token)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=access_token)
+    model = AutoModelForCausalLM.from_pretrained(model_id, token=access_token)
+
+    # Move the model to GPU if available, otherwise CPU
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+    else:
+        model = model.to("cpu")
+
+    # Define conversation termination tokens
+    terminators = [
+        tokenizer.eos_token_id,  # End-of-sentence token
+        tokenizer.convert_tokens_to_ids("<|eot_id|>"),  # Custom end-of-conversation token
+    ]
+
+    # Maximum allowed input token length
+    MAX_INPUT_TOKEN_LENGTH = 4096
+
+def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
+    """Generates text based on the given prompt and conversation history.
+
+    Args:
+        message: The user's prompt.
+        history: A list of tuples containing user and assistant messages.
+        temperature: Controls randomness in generation.
+        max_new_tokens: Maximum number of tokens to generate.
+        system: Optional system prompt.
+
+    Returns:
+        The generated text.
+    """
+
+    input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt")
+
+    if input_ids.shape[1] > MAX_INPUT_TOKEN_LENGTH:
+        input_ids = input_ids[:, -MAX_INPUT_TOKEN_LENGTH:]   
+
+
+    input_ids = input_ids.to(model.device)   
+
+
+    generate_kwargs = {
+        "input_ids": input_ids,
+        "max_length": max_new_tokens + input_ids.shape[1],  # Adjust for total length
+        "do_sample": temperature != 0,  # Use sampling for non-zero temperature (randomness)
+        "temperature": temperature,
+        "eos_token_id": terminators,  # Specify tokens to stop generation
+    }
+
+    output = model.generate(**generate_kwargs)[0]
+    response = tokenizer.decode(output, skip_special_tokens=True)
+
+    return response
+
+#######################################
+def reinitialize_gemini_model(instructions_string):
     utc_time = datetime.now(pytz.utc)
     est_time = get_adjusted_dt(utc_time)
     current_time_of_day = time_of_day(est_time)
@@ -198,7 +444,7 @@ def reinitialize_model(instructions_string):
     print (f"Time of day is: {saved_time_of_day}")
 
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-pro",
+        model_name=AI_MODEL,
         generation_config=generation_config,
         safety_settings={
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -235,51 +481,75 @@ generation_config = {
     "max_output_tokens": 500,
     "response_mime_type": "text/plain",
 }
-model = reinitialize_model(system_instructions)
+photo_config = {
+    "temperature": 0,
+    "top_p": 0.95,
+    "top_k": 64,
+    "max_output_tokens": 500,
+    "response_mime_type": "text/plain",
+}
 
-photo_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    generation_config=generation_config,
-    safety_settings={
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
-        },
+# TODO: need to use LLama for photo eval
+photo_eval_model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config=photo_config,
+        safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            },
 
-    system_instruction="Your job is to determine whether the input text is specifically asking the user to upload a photo. You should respond with yes or no, and if you a short description of the type of photo being asked for, such as \"profile photo\" or \"screenshot\"",
-)
-model_priming = [
-  "Your job is to determine if the input text is asking for a photo. You can respond with yes or no. In the case of yes, give a brief description of what sort of photo is being asked for, like \"profile photo\" and \"screenshot\"",
-  "input: can you send me a photo of you",
-  "output: yes. profile photo",
-  "input: Can you take a picture of the Coinbase app and send it to me?",
-  "output: yes. screenshot",
-  "input: What sort of dogs do you have?",
-  "output: no",
-  "input: Can you send me a pitcure of your dogs?",
-  "output: yes. pet photo",
-  "input: Can you show me what you look like?",
-  "output: yes. profile photo",
-  "input: Can you show me what you look like?",
-  "output: yes. profile photo",
-  "input: Where are your photos?",
-  "output: yes. profile photo",
-  "input: Do you have any recent photos of your mom?",
-  "output: yes. family photo",
-  "input: can you show me what you look like?",
-  "output: yes. profile photo",
-  "input: Show me what you look like",
-  "output: yes. profile photo",
-  "input: What do you look like?",
-  "output: yes. profile photo",
-  "input: What does your mom look like?",
-  "output: yes. family photo",
-  "input: Where are your photos?",
-  "output: yes. profile photo",
-  "input: Show me your wallet",
-  "input: yes. screenshot"
-]
+        system_instruction="your role is to evaluate an image and describe what the image depicts in 2 sentences",
+    )
+if 'gemin' in AI_MODEL:
+    model = reinitialize_gemini_model(system_instructions)
+
+    photo_model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config=generation_config,
+        safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            },
+
+        system_instruction="""
+            Your job it to determine whether the prompt is a request to share a photo
+        """
+    )
+    model_priming = [
+    "Your job is to determine if the input text is asking for a photo. You can respond with yes or no. In the case of yes, give a brief description of what sort of photo is being asked for, like \"profile photo\" and \"screenshot\"",
+    "input: can you send me a photo of you",
+    "output: yes. profile photo",
+    "input: Can you take a picture of the Coinbase app and send it to me?",
+    "output: yes. screenshot",
+    "input: What sort of dogs do you have?",
+    "output: no",
+    "input: Can you send me a pitcure of your dogs?",
+    "output: yes. pet photo",
+    "input: Can you show me what you look like?",
+    "output: yes. profile photo",
+    "input: Can you show me what you look like?",
+    "output: yes. profile photo",
+    "input: Where are your photos?",
+    "output: yes. profile photo",
+    "input: Do you have any recent photos of your mom?",
+    "output: yes. family photo",
+    "input: can you show me what you look like?",
+    "output: yes. profile photo",
+    "input: Show me what you look like",
+    "output: yes. profile photo",
+    "input: What do you look like?",
+    "output: yes. profile photo",
+    "input: What does your mom look like?",
+    "output: yes. family photo",
+    "input: Where are your photos?",
+    "output: yes. profile photo",
+    "input: Show me your wallet",
+    "input: yes. screenshot"
+    ]
 
 def count_words(text):
     words = text.split()
@@ -338,8 +608,9 @@ def get_chat(chat_id):
     utc_time = datetime.now(pytz.utc)
     est_time = get_adjusted_dt(utc_time)
     current_time_of_day = time_of_day(est_time)
+    chat = None
     global model
-   
+    global saved_time_of_day
     if chat_id in chat_dict:
         print(f'continuing conversation with {chat_id}')
         chat = chat_dict[chat_id]
@@ -350,16 +621,36 @@ def get_chat(chat_id):
             # Fetch the history for this user
             user = session.query(User).filter(User.telegram==chat_id).first()
             history = get_user_history(user)
-            print(history)
-            
-        chat = model.start_chat(history=history)
+            #print(history)
+        if 'gemini' in AI_MODEL:    
+            chat = model.start_chat(history=history)
+        elif 'llama' in AI_MODEL:
+            utc_time = datetime.now(pytz.utc)
+            est_time = get_adjusted_dt(utc_time)
+            current_time_of_day = time_of_day(est_time)
+            new_instructions = llama_instructions + f" The current time of day is {current_time_of_day}"
+            saved_time_of_day = current_time_of_day
+            chat = ChatSession()
+            chat.start_chat(new_instructions, history)
         chat_dict[chat_id] = chat
 
     if current_time_of_day != saved_time_of_day:
+        
         # Need to reinit the model with new time
-        model = reinitialize_model(system_instructions)
-        history = chat.history
-        chat = model.start_chat(history=history)
+        if 'gemini' in AI_MODEL:
+            model = reinitialize_gemini_model(system_instructions)
+            history = chat.history
+            chat = model.start_chat(history=history)
+        elif 'llama' in AI_MODEL:
+            utc_time = datetime.now(pytz.utc)
+            est_time = get_adjusted_dt(utc_time)
+            current_time_of_day = time_of_day(est_time)
+            
+            new_instructions = system_instructions + [f"Current time of day is {current_time_of_day}"]
+            saved_time_of_day = current_time_of_day
+            history = chat.history
+            chat = ChatSession()
+            chat.start_chat(new_instructions, history)
         chat_dict[chat_id] = chat
     return chat
 
@@ -373,24 +664,31 @@ async def get_user_info(user_id):
     return user_info
 
 def get_photo_and_text(message_text):
-    prime_response = photo_model.generate_content(model_priming)
+    response_text = ''
+    if 'gemini' in AI_MODEL:
+        prime_response = photo_model.generate_content(model_priming)
 
-    response = photo_model.generate_content(f"is this asking for a photo, and if so what sort? {message_text}")
-    print(f"asking for a photo? {response.text}")
+        response = photo_model.generate_content(f"is this asking for a photo, and if so what sort? {message_text}")
+        response_text = response.text
+        
+    elif 'llama' in AI_MODEL:
+        response_text = is_photo(message_text)
+        print (response_text)
+    print(f"asking for a photo? {response_text}")
     
-    if 'yes' in response.text.lower():
+    if 'yes' in response_text.lower():
         photo_path = profile_photo_path
         photo_text = 'here is selfie'
-        if 'pet' in response.text.lower():
+        if 'pet' in response_text.lower():
             photo_path = pet_photo_path
             photo_text = 'here is a pic of Bruno. He\'s a sweetheart'
         elif 'coinbase' in message_text.lower():
             photo_path = coinbase_photo_path
             photo_text = 'I hope I did that right'
-        elif 'screenshot' in response.text.lower():
+        elif 'screenshot' in response_text.lower():
             photo_path = bling_photo_path
             photo_text = 'Here\'s what I have at the moment in crypto. I\'ve got about a million more in other investments'
-        elif 'family' in response.text.lower():
+        elif 'family' in response_text.lower():
             photo_path = kid_photo_path
             photo_text = 'here\'s a pic of my gorgeous daughter Lindsay'
         else:
@@ -440,10 +738,15 @@ async def my_handler(client, message):
         path = await download_file(message)
         relative_path = os.path.relpath(path, starting_directory)
         sample_file = genai.upload_file(path, display_name="Sample drawing")
-        image_response = model.generate_content([sample_file, "Describe this image"])
+        image_response = photo_eval_model.generate_content([sample_file, "Describe this image"])
         image_description = image_response.text
-        response = chat.send_message(image_description)
-        response_string = response.text
+        model_input = f"An image was sent with this description: {image_description}"
+        response = chat.send_message(model_input)
+        if 'llama' in AI_MODEL:
+            response_string = response
+        else:
+            response_string = response.text
+        text = model_input
         #await message.reply(response_string)
     elif text:
         # Get current time for EST
@@ -453,7 +756,10 @@ async def my_handler(client, message):
 
         # Get Model response
         response = chat.send_message(text)
-        response_string = response.text
+        if 'llama' in AI_MODEL:
+            response_string = response
+        else:
+            response_string = response.text
 
         # Check to see if we need to reply with a photo
         photo_path, photo_text = get_photo_and_text(text)
@@ -462,7 +768,7 @@ async def my_handler(client, message):
                 # Create a new message instance
                 new_message = Message(
                     prompt=text,
-                    response=photo_text,
+                    response=f"You sent a photo and this text: {photo_text}",
                     user_id=user.user_id,
                     phone=user.phone,
                     service='Telegram',
@@ -477,6 +783,8 @@ async def my_handler(client, message):
                 time.sleep(delay)
             try:
                 await app.send_photo(id, photo_path, photo_text)
+                chat.chat_history.append(llama_user(text))
+                chat.chat_history.append(system(f"You sent a photo and this text: {photo_text}"))
             except RPCError as e:
                 print(f"error sending photo {e}")
             return
