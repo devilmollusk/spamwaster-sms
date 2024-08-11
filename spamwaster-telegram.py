@@ -17,8 +17,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # LLama
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
 from typing import Dict, List
 from groq import Groq
 from huggingface_hub import login
