@@ -2,14 +2,21 @@
 <html>
   <head>
     <title>Log Stream</title>
+    <style>
+      body {
+        font-family: monospace;
+      }
+      #log {
+        white-space: pre-wrap; /* Preserve formatting and line breaks */
+      }
+    </style>
     <script type="text/javascript">
       function fetchLogs() {
         const eventSource = new EventSource("/stream");
         eventSource.onmessage = function(event) {
           const log = document.getElementById("log");
-          const newElement = document.createElement("div");
-          newElement.innerHTML = event.data.replace(/\\n/g, '<br>');
-          log.appendChild(newElement);
+          log.innerHTML += event.data; // Append new data to existing content
+          log.scrollTop = log.scrollHeight; // Scroll to the bottom
         };
       }
 

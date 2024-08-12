@@ -7,7 +7,7 @@ app = Flask(__name__)
 def index():
     # Read the entire log file content to serve on initial load
     with open('output.log', 'r') as f:
-        initial_content = f.read()
+        initial_content = f.read().replace('\n', '<br>')  # Preserve line breaks
     return render_template('index.html', initial_content=initial_content)
 
 @app.route('/stream')
@@ -20,7 +20,7 @@ def stream():
                 if not line:
                     time.sleep(1)  # Wait for new data
                     continue
-                yield f"data: {line}\n\n"
+                yield f"data: {line.replace('\\n', '<br>')}\n\n"  # Preserve line breaks
     
     return Response(generate(), mimetype='text/event-stream')
 
