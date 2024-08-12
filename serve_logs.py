@@ -1,5 +1,5 @@
+import select
 from flask import Flask, Response, render_template_string
-from time import sleep
 
 app = Flask(__name__)
 
@@ -34,10 +34,10 @@ def stream():
             f.seek(0, 2)  # Move the cursor to the end of the file
             while True:
                 line = f.readline()
-                if not line:
-                    sleep(1)  # Correctly call the sleep function from time module
-                    continue
-                yield f"data: {line}\n\n"
+                if line:
+                    yield f"data: {line}\n\n"
+                else:
+                    select.select([f], [], [], 1)  # Wait for 1 second or until new data arrives
     
     return Response(generate(), mimetype='text/event-stream')
 
