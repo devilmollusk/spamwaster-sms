@@ -8,6 +8,8 @@
       }
       #log {
         white-space: pre-wrap; /* Preserve formatting and line breaks */
+        overflow-y: auto; /* Scrollable area if log is long */
+        height: 80vh; /* Adjust height as needed */
       }
     </style>
     <script type="text/javascript">
@@ -21,12 +23,12 @@
       }
 
       document.addEventListener("DOMContentLoaded", function() {
-        // Set initial content
-        const initialContent = document.getElementById("log").innerHTML;
+        // Initialize the log content
         const log = document.getElementById("log");
-        log.innerHTML = initialContent;
 
-        fetchLogs(); // Start fetching logs after initial content is loaded
+        // Start fetching logs after initial content is loaded
+        log.scrollTop = log.scrollHeight; // Scroll to the bottom on initial load
+        fetchLogs();
       });
     </script>
   </head>

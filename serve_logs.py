@@ -20,7 +20,7 @@ def stream():
                 if not line:
                     time.sleep(1)  # Wait for new data
                     continue
-                yield f"data: {line.replace('\\n', '<br>')}\n\n"  # Preserve line breaks
+                yield f"data: {line.replace('\n', '<br>')}\n\n"  # Preserve line breaks
     
     return Response(generate(), mimetype='text/event-stream')
 
