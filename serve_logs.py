@@ -1,5 +1,5 @@
 from flask import Flask, Response, render_template_string
-from time import time
+from time import sleep
 
 app = Flask(__name__)
 
@@ -35,7 +35,7 @@ def stream():
             while True:
                 line = f.readline()
                 if not line:
-                    time.sleep(1)
+                    sleep(1)  # Correctly call the sleep function from time module
                     continue
                 yield f"data: {line}\n\n"
     
