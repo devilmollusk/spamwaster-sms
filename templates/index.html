@@ -12,28 +12,26 @@
         height: 80vh; /* Adjust height as needed */
       }
     </style>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script type="text/javascript">
-      function fetchLogs() {
-        const eventSource = new EventSource("/stream");
-        eventSource.onmessage = function(event) {
-          const log = document.getElementById("log");
-          log.innerHTML += event.data; // Append new data to existing content
-          log.scrollTop = log.scrollHeight; // Scroll to the bottom
-        };
-      }
-
       document.addEventListener("DOMContentLoaded", function() {
-        // Initialize the log content
+        const socket = io.connect('http://' + document.domain + ':' + location.port);
         const log = document.getElementById("log");
 
-        // Start fetching logs after initial content is loaded
+        // Append initial content
+        log.innerHTML = "{{ initial_content | safe }}";
         log.scrollTop = log.scrollHeight; // Scroll to the bottom on initial load
-        fetchLogs();
+
+        // Handle log updates from the server
+        socket.on('log_update', function(data) {
+          log.innerHTML += data;
+          log.scrollTop = log.scrollHeight; // Scroll to the bottom
+        });
       });
     </script>
   </head>
   <body>
     <h1>Log Stream</h1>
-    <div id="log">{{ initial_content | safe }}</div>
+    <div id="log"></div>
   </body>
 </html>
