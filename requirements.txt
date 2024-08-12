@@ -128,5 +128,3 @@ vonage-utils==1.1.2
 Werkzeug==3.0.3
 wheel==0.43.0
 wrapt==1.16.0
-wsproto==1.2.0
-yarl==1.9.4
