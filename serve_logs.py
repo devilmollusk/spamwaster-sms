@@ -39,4 +39,4 @@ if __name__ == "__main__":
     # Start a background thread to monitor the log file
     threading.Thread(target=tail_f, args=('output.log', 1.0), daemon=True).start()
     # Run the app with eventlet
-    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5000)), app)
+    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8000)), app)
