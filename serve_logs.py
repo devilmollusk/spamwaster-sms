@@ -1,4 +1,5 @@
 from flask import Flask, Response, render_template_string
+from time import time
 
 app = Flask(__name__)
 
