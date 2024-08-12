@@ -5,7 +5,10 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Read the entire log file content to serve on initial load
+    with open('output.log', 'r') as f:
+        initial_content = f.read()
+    return render_template('index.html', initial_content=initial_content)
 
 @app.route('/stream')
 def stream():
