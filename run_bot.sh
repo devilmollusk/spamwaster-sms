@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Paths to the Python script and log file
-VENV_PATH="spamwaster-env"
+VENV_PATH="spamwaster"
 PYTHON_SCRIPT_PATH="spamwaster-telegram.py"
 PYTHON_FLASK_PATH="serve_logs.py"
 LOG_FILE_PATH="output.log"

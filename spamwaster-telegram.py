@@ -126,7 +126,16 @@ class Message(Base):
     prompt_media = Column(String(255))
     response_media = Column(String(255))
 
-# Create the table
+class History(Base):
+    __tablename__='history'
+    uuid = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('user.user_id'), nullable=False)
+    role = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    text = Column(UnicodeText, nullable=False)
+    media = Column(String(255), nullable=True)
+
+# Create the table 
 Base.metadata.create_all(engine)
 
 # Chat session class
@@ -204,48 +213,27 @@ def time_of_day(dt):
 
 def get_last_10_messages(user_id):
     messages = (
-        session.query(Message)
-        .filter(Message.user_id == user_id)
-        .order_by(Message.uuid.asc())
+        session.query(History)
+        .filter(History.user_id == user_id)
+        .order_by(History.uuid.asc())
         .all()
     )
     return messages[-10:]
 def get_user_history(user):
     messages = get_last_10_messages(user.user_id)
     history=[]
-    if 'llama' in AI_MODEL:
-        for message in messages:
-            prompt = message.prompt if message.prompt else ''
-            response = message.response if message.response else ''
-            user_message = {
-                "role": "user",
-                "content": prompt
-
-            }
-            model_message = {
-                "role": "assistant",
-                "content": response
-            }
-            history.append(user_message)
-            history.append(model_message)
-    else:
-        for message in messages:
-            prompt = message.prompt if message.prompt else ''
-            response = message.response if message.response else ''
-            user_message = {
-                "role": "user",
-                "parts": [
-                    prompt
-                ]
-            }
-            model_message = {
-                "role": "model",
-                "parts": [
-                    response
-                ]
-            }
-            history.append(user_message)
-            history.append(model_message)
+    ai_role = "assistant" if "llama" in AI_MODEL else "model"
+    
+    for message in messages:
+        text = message.text
+        role = "user" if message.role == "user" else ai_role
+        new_message = {
+            "role": role,
+            "content": text
+        }
+        
+        history.append(new_message)
+    
     return history
     
 # Global to store time of day
@@ -564,11 +552,8 @@ def get_user(user_obj):
     # Perform the query
     user = session.query(User).filter(
         or_(
-            User.phone != '' and User.phone == phone,
             User.username != '' and User.username == username,
             User.telegram != '' and User.telegram == id,
-            User.first_name != '' and User.first_name == first_name,
-            User.last_name != '' and User.last_name == last_name,
         )
     ).first()
 
@@ -699,6 +684,16 @@ def get_photo_and_text(message_text):
         return photo_path, photo_text
     return None, None
 
+def add_history(role: str, text:str, user:User, media:str = ''):
+    new_history = History(
+        role=role,
+        text=text,
+        user_id=user.user_id,
+        media=media
+    )
+    session.add(new_history)
+    session.commit()
+
 async def download_file(message):
     path = await app.download_media(message)
 
@@ -763,59 +758,31 @@ async def my_handler(client, message):
         photo_path, photo_text = get_photo_and_text(text)
         if photo_path:
             if user:
-                # Create a new message instance
-                new_message = Message(
-                    prompt=text,
-                    response=f"You sent a photo and this text: {photo_text}",
-                    user_id=user.user_id,
-                    phone=user.phone,
-                    service='Telegram',
-                    response_media=photo_path,
-                    prompt_media=relative_path
-                )
-                session.add(new_message)
-
-                # Commit the session to save the new message to the database
-                session.commit()
+                response_text = f"You sent a photo and this text: {photo_text}"
+                add_history('user', text, user, relative_path)
+                
             if USE_DELAY:
                 time.sleep(delay)
             try:
                 await app.send_photo(id, photo_path, photo_text)
+                add_history('ai', response_text, user, photo_path)
+
                 chat.chat_history.append(llama_user(text))
-                chat.chat_history.append(system(f"You sent a photo and this text: {photo_text}"))
+                chat.chat_history.append(assistant(f"You sent a photo and this text: {photo_text}"))
             except RPCError as e:
                 print(f"error sending photo {e}")
             return
 
-    
+    add_history('user', text, user, relative_path)
     if response_string:
-        # Message has text
-        # Find out about the sender
-        
-
-        # Write a message instance
-        if user:
-            
-            # Create a new message instance
-            new_message = Message(
-                prompt=text,
-                response=response_string,
-                user_id=user.user_id,
-                phone=user.phone,
-                service='Telegram',
-                prompt_media=relative_path
-            )
-            session.add(new_message)
-
-            # Commit the session to save the new message to the database
-            session.commit()
-
         
         # Delay before we start sending
         delay += count_words(response_string)
         if USE_DELAY:
             time.sleep(delay)
         
+        if user:
+            add_history('ai', response_string, user)
         
         await message.reply(response_string)
 
