@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Log Stream</title>
+    <script type="text/javascript">
+      function fetchLogs() {
+        const eventSource = new EventSource("/stream");
+        eventSource.onmessage = function(event) {
+          const log = document.getElementById("log");
+          const newElement = document.createElement("div");
+          newElement.innerHTML = event.data.replace(/\\n/g, '<br>');
+          log.appendChild(newElement);
+        };
+      }
+
+      document.addEventListener("DOMContentLoaded", function() {
+        fetchLogs(); // Start fetching logs once the page has loaded
+      });
+    </script>
+  </head>
+  <body>
+    <h1>Log Stream</h1>
+    <div id="log"></div>
+  </body>
+</html>
