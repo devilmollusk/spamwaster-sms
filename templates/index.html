@@ -14,12 +14,17 @@
       }
 
       document.addEventListener("DOMContentLoaded", function() {
-        fetchLogs(); // Start fetching logs once the page has loaded
+        // Set initial content
+        const initialContent = document.getElementById("log").innerHTML;
+        const log = document.getElementById("log");
+        log.innerHTML = initialContent;
+
+        fetchLogs(); // Start fetching logs after initial content is loaded
       });
     </script>
   </head>
   <body>
     <h1>Log Stream</h1>
-    <div id="log"></div>
+    <div id="log">{{ initial_content | safe }}</div>
   </body>
 </html>
