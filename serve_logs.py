@@ -1,10 +1,14 @@
-import select
 from flask import Flask, Response, render_template_string
+import time
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
+    # Read the entire log file content for initial load
+    with open('output.log', 'r') as f:
+        log_content = f.read()
+
     return render_template_string("""
     <!doctype html>
     <html>
@@ -13,7 +17,7 @@ def index():
       </head>
       <body>
         <h1>Log Stream</h1>
-        <div id="log"></div>
+        <div id="log">{{ log_content|safe }}</div>
         <script type="text/javascript">
           const eventSource = new EventSource("/stream");
           eventSource.onmessage = function(event) {
@@ -25,7 +29,7 @@ def index():
         </script>
       </body>
     </html>
-    """)
+    """, log_content=log_content.replace('\n', '<br>'))
 
 @app.route('/stream')
 def stream():
@@ -34,10 +38,13 @@ def stream():
             f.seek(0, 2)  # Move the cursor to the end of the file
             while True:
                 line = f.readline()
-                if line:
-                    yield f"data: {line}\n\n"
-                else:
-                    select.select([f], [], [], 1)  # Wait for 1 second or until new data arrives
+                if not line:
+                    try:
+                        time.sleep(1)  # Sleep for 1 second
+                    except Exception as e:
+                        print(f"Error during sleep: {e}")
+                    continue
+                yield f"data: {line}\n\n"
     
     return Response(generate(), mimetype='text/event-stream')
 
