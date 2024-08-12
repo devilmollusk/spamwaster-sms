@@ -1,3 +1,4 @@
+import eventlet
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 import threading
@@ -37,4 +38,5 @@ def handle_disconnect():
 if __name__ == "__main__":
     # Start a background thread to monitor the log file
     threading.Thread(target=tail_f, args=('output.log', 1.0), daemon=True).start()
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    # Run the app with eventlet
+    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5000)), app)
