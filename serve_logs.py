@@ -1,5 +1,7 @@
 from flask import Flask, Response, render_template_string
+import os
 import time
+import select
 
 app = Flask(__name__)
 
@@ -35,16 +37,17 @@ def index():
 def stream():
     def generate():
         with open('output.log', 'r') as f:
-            f.seek(0, 2)  # Move the cursor to the end of the file
+            f.seek(0, os.SEEK_END)  # Move the cursor to the end of the file
             while True:
-                line = f.readline()
-                if not line:
-                    try:
-                        time.sleep(1)  # Sleep for 1 second
-                    except Exception as e:
-                        print(f"Error during sleep: {e}")
+                # Use select to wait for data to be available on the file descriptor
+                rlist, _, _ = select.select([f], [], [], 1)
+                if rlist:
+                    line = f.readline()
+                    if line:
+                        yield f"data: {line}\n\n"
+                else:
+                    # No new data, continue to the next iteration
                     continue
-                yield f"data: {line}\n\n"
     
     return Response(generate(), mimetype='text/event-stream')
 
