@@ -631,7 +631,7 @@ def get_chat(chat_id):
             
             new_instructions = system_instructions + [f"Current time of day is {current_time_of_day}"]
             saved_time_of_day = current_time_of_day
-            history = chat.history
+            history = chat.chat_history
             chat = ChatSession()
             chat.start_chat(new_instructions, history)
         chat_dict[chat_id] = chat
