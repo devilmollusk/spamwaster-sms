@@ -98,7 +98,7 @@ class User(Base):
     user_id = Column(Integer, primary_key=True)
     username = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True)
-    phone = Column(String(255), unique=True, nullable=True)
+    phone = Column(String(255), nullable=True)
     consent = Column(Boolean, nullable=False)
     favorite = Column(Boolean, default=False)
     telegram = Column(String(255), nullable=True)
