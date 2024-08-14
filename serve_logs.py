@@ -1,5 +1,5 @@
 import eventlet
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 import threading
 import os
@@ -13,7 +13,7 @@ def index():
     try:
         with open('output.log', 'r') as f:
             initial_content = f.read()
-        # Pass the initial content as a JSON string to handle special characters safely
+        # Escape the JSON to be safely embedded in the HTML
         initial_content_json = json.dumps(initial_content)
     except Exception as e:
         initial_content_json = json.dumps(f"Error reading log file: {str(e)}")
@@ -22,18 +22,14 @@ def index():
     return render_template('index.html', initial_content=initial_content_json)
 
 def tail_f(filename, interval=1.0):
-    """
-    Mimics the behavior of tail -f to monitor the file for changes.
-    """
     try:
         with open(filename, 'r') as f:
-            f.seek(0, os.SEEK_END)  # Start at the end of the file
+            f.seek(0, os.SEEK_END)
             while True:
                 line = f.readline()
                 if not line:
                     eventlet.sleep(interval)
                     continue
-                # Emit the line safely encoded in JSON
                 socketio.emit('log_update', json.dumps(line))
     except Exception as e:
         app.logger.error(f"Error in tail_f: {str(e)}")
@@ -47,7 +43,5 @@ def handle_disconnect():
     app.logger.info('Client disconnected')
 
 if __name__ == "__main__":
-    # Start a background thread to monitor the log file
     threading.Thread(target=tail_f, args=('output.log', 1.0), daemon=True).start()
-    # Run the app with eventlet
     eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8000)), app)

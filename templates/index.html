@@ -7,9 +7,9 @@
         font-family: monospace;
       }
       #log {
-        white-space: pre-wrap; /* Preserve formatting and line breaks */
-        overflow-y: auto; /* Scrollable area if log is long */
-        height: 80vh; /* Adjust height as needed */
+        white-space: pre-wrap;
+        overflow-y: auto;
+        height: 80vh;
       }
     </style>
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
@@ -19,15 +19,15 @@
         const log = document.getElementById("log");
 
         // Parse and append initial content
-        const initialContent = JSON.parse({{ initial_content | safe }});
+        const initialContent = JSON.parse({{ initial_content | tojson }});
         log.innerHTML = initialContent.replace(/\n/g, '<br>');
-        log.scrollTop = log.scrollHeight; // Scroll to the bottom on initial load
+        log.scrollTop = log.scrollHeight;
 
         // Handle log updates from the server
         socket.on('log_update', function(data) {
           const newLine = JSON.parse(data);
           log.innerHTML += newLine.replace(/\n/g, '<br>');
-          log.scrollTop = log.scrollHeight; // Scroll to the bottom
+          log.scrollTop = log.scrollHeight;
         });
       });
     </script>
