@@ -6,7 +6,8 @@ import os
 import json
 
 app = Flask(__name__)
-socketio = SocketIO(app)
+socketio = SocketIO(app, message_queue='redis://localhost:6379/0')
+
 
 @app.route('/')
 def index():
