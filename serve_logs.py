@@ -6,7 +6,7 @@ import os
 import json
 
 app = Flask(__name__)
-socketio = SocketIO(app, message_queue='redis://localhost:6379/0')
+socketio = SocketIO(app, message_queue='redis://localhost:6379/0', cors_allowed_origins="*")
 
 
 @app.route('/')
