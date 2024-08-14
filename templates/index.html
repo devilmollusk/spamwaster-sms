@@ -18,12 +18,15 @@
         const socket = io.connect('http://' + document.domain + ':' + location.port);
         const log = document.getElementById("log");
 
-        // Append initial content
-        log.innerHTML = JSON.parse("{{ initial_content | safe }}");
+        // Parse and append initial content
+        const initialContent = JSON.parse({{ initial_content | safe }});
+        log.innerHTML = initialContent.replace(/\n/g, '<br>');
         log.scrollTop = log.scrollHeight; // Scroll to the bottom on initial load
+
         // Handle log updates from the server
         socket.on('log_update', function(data) {
-          log.innerHTML += data;
+          const newLine = JSON.parse(data);
+          log.innerHTML += newLine.replace(/\n/g, '<br>');
           log.scrollTop = log.scrollHeight; // Scroll to the bottom
         });
       });

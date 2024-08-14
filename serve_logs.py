@@ -2,42 +2,49 @@ import eventlet
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 import threading
-import time
 import os
 import json
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-import json
-from flask import render_template
-
 @app.route('/')
 def index():
-    with open('output.log', 'r') as f:
-        initial_content = json.dumps(f.read())
-    return render_template('index.html', initial_content=initial_content)
+    try:
+        with open('output.log', 'r') as f:
+            initial_content = f.read()
+        # Pass the initial content as a JSON string to handle special characters safely
+        initial_content_json = json.dumps(initial_content)
+    except Exception as e:
+        initial_content_json = json.dumps(f"Error reading log file: {str(e)}")
+        app.logger.error(f"Failed to read log file: {str(e)}")
+    
+    return render_template('index.html', initial_content=initial_content_json)
 
 def tail_f(filename, interval=1.0):
     """
     Mimics the behavior of tail -f to monitor the file for changes.
     """
-    with open(filename, 'r', encoding='utf-8', errors='replace') as f:
-        f.seek(0, os.SEEK_END)  # Start at the end of the file
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(interval)
-                continue
-            socketio.emit('log_update', line.replace('\n', '<br>'))
+    try:
+        with open(filename, 'r') as f:
+            f.seek(0, os.SEEK_END)  # Start at the end of the file
+            while True:
+                line = f.readline()
+                if not line:
+                    eventlet.sleep(interval)
+                    continue
+                # Emit the line safely encoded in JSON
+                socketio.emit('log_update', json.dumps(line))
+    except Exception as e:
+        app.logger.error(f"Error in tail_f: {str(e)}")
 
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
+    app.logger.info('Client connected')
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
+    app.logger.info('Client disconnected')
 
 if __name__ == "__main__":
     # Start a background thread to monitor the log file
