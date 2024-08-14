@@ -19,9 +19,8 @@
         const log = document.getElementById("log");
 
         // Append initial content
-        log.innerHTML = "{{ initial_content | safe }}";
+        log.innerHTML = JSON.parse("{{ initial_content | safe }}");
         log.scrollTop = log.scrollHeight; // Scroll to the bottom on initial load
-
         // Handle log updates from the server
         socket.on('log_update', function(data) {
           log.innerHTML += data;

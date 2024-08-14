@@ -4,14 +4,18 @@ from flask_socketio import SocketIO, emit
 import threading
 import time
 import os
+import json
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
+import json
+from flask import render_template
+
 @app.route('/')
 def index():
-    with open('output.log', 'r', encoding='utf-8', errors='replace') as f:
-        initial_content = f.read().replace('\n', '<br>')  # Preserve line breaks
+    with open('output.log', 'r') as f:
+        initial_content = json.dumps(f.read())
     return render_template('index.html', initial_content=initial_content)
 
 def tail_f(filename, interval=1.0):
