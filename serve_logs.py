@@ -10,7 +10,7 @@ socketio = SocketIO(app)
 
 @app.route('/')
 def index():
-    with open('output.log', 'r') as f:
+    with open('output.log', 'r', encoding='utf-8', errors='replace') as f:
         initial_content = f.read().replace('\n', '<br>')  # Preserve line breaks
     return render_template('index.html', initial_content=initial_content)
 
@@ -18,7 +18,7 @@ def tail_f(filename, interval=1.0):
     """
     Mimics the behavior of tail -f to monitor the file for changes.
     """
-    with open(filename, 'r') as f:
+    with open(filename, 'r', encoding='utf-8', errors='replace') as f:
         f.seek(0, os.SEEK_END)  # Start at the end of the file
         while True:
             line = f.readline()
