@@ -44,5 +44,10 @@ def handle_disconnect():
     app.logger.info('Client disconnected')
 
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
     threading.Thread(target=tail_f, args=('output.log', 1.0), daemon=True).start()
-    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8000)), app)
+    eventlet.monkey_patch()
+    socketio.run(app, host='0.0.0.0', port=8000)
+
+    #eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 8000)), app)
