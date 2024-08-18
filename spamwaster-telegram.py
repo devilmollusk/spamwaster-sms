@@ -156,8 +156,8 @@ class ChatSession:
             self.chat_history.extend(history)
             
         # Ensure there's only one system instruction entry
-        #self.chat_history = [entry for entry in self.chat_history if entry["role"] != "system"] + [{"role": "system", "content": system_instructions}]
-        print(f"Starting LLama chat with: {self.chat_history}")
+        self.chat_history = [entry for entry in self.chat_history if entry["role"] != "system"] + [{"role": "system", "content": system_instructions}]
+        #print(f"Starting LLama chat with: {self.chat_history}")
     def send_message(self, message, role="user"):
         """Sends a message and appends it to the chat history."""
         # Add the user's message to the history
@@ -612,6 +612,7 @@ def get_chat(chat_id):
             est_time = get_adjusted_dt(utc_time)
             current_time_of_day = time_of_day(est_time)
             new_instructions = llama_instructions + f" The current time of day is {current_time_of_day}"
+            print (new_instructions)
             saved_time_of_day = current_time_of_day
             chat = ChatSession()
             chat.start_chat(new_instructions, history)
@@ -629,7 +630,7 @@ def get_chat(chat_id):
             est_time = get_adjusted_dt(utc_time)
             current_time_of_day = time_of_day(est_time)
             
-            new_instructions = system_instructions + [f"Current time of day is {current_time_of_day}"]
+            new_instructions = system_instructions + f"Current time of day is {current_time_of_day}"
             saved_time_of_day = current_time_of_day
             history = chat.chat_history
             chat = ChatSession()
