@@ -53,7 +53,7 @@ LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
 
 DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
 LLAMA_URL = os.getenv('LLAMA_URL')
-LLAMA_MODEL = os.getenv('LLAMA_URL')
+LLAMA_MODEL = os.getenv('LLAMA_MODEL')
 
 llama_client = Groq()
 # SQLAlchemy Database URI
