@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import sys
 import json
+import requests
 import asyncio
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -51,6 +52,7 @@ LLAMA3_70B_INSTRUCT = "llama3-70b-8192"
 LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
 
 DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
+LLAMA_URL = os.getenv('LLAMA_URL')
 
 llama_client = Groq()
 # SQLAlchemy Database URI
@@ -327,9 +329,10 @@ def chat_completion(
                 temperature=temperature,
                 top_p=top_p,
             )
+            return response.choices[0].message.content
+
         else:
-            llama_generate_text(messages)
-        return response.choices[0].message.content
+            return llama_generate_text(messages)
 def completion(
     prompt: str,
     model: str = DEFAULT_MODEL,
@@ -363,26 +366,6 @@ def is_photo(text):
     ]
     )
 
-if not USE_HOSTED_LLAMA:
-    # Load tokenizer and model from Hugging Face Hub (requires access token)
-    tokenizer = AutoTokenizer.from_pretrained(model_id, token=access_token)
-    model = AutoModelForCausalLM.from_pretrained(model_id, token=access_token)
-
-    # Move the model to GPU if available, otherwise CPU
-    if torch.cuda.is_available():
-        model = model.to("cuda")
-    else:
-        model = model.to("cpu")
-
-    # Define conversation termination tokens
-    terminators = [
-        tokenizer.eos_token_id,  # End-of-sentence token
-        tokenizer.convert_tokens_to_ids("<|eot_id|>"),  # Custom end-of-conversation token
-    ]
-
-    # Maximum allowed input token length
-    MAX_INPUT_TOKEN_LENGTH = 4096
-
 def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
     """Generates text based on the given prompt and conversation history.
 
@@ -396,28 +379,20 @@ def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""
     Returns:
         The generated text.
     """
-
-    input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt")
-
-    if input_ids.shape[1] > MAX_INPUT_TOKEN_LENGTH:
-        input_ids = input_ids[:, -MAX_INPUT_TOKEN_LENGTH:]   
-
-
-    input_ids = input_ids.to(model.device)   
-
-
-    generate_kwargs = {
-        "input_ids": input_ids,
-        "max_length": max_new_tokens + input_ids.shape[1],  # Adjust for total length
-        "do_sample": temperature != 0,  # Use sampling for non-zero temperature (randomness)
-        "temperature": temperature,
-        "eos_token_id": terminators,  # Specify tokens to stop generation
+    data = {
+        "model": "llama3",
+        "messages": messages,
+        "stream": False
     }
+    
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    
+    response = requests.post(LLAMA_URL, headers=headers, json=data)
+    
+    return(response.json()['message']['content'])
 
-    output = model.generate(**generate_kwargs)[0]
-    response = tokenizer.decode(output, skip_special_tokens=True)
-
-    return response
 
 #######################################
 def reinitialize_gemini_model(instructions_string):
