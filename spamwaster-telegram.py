@@ -53,6 +53,7 @@ LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
 
 DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
 LLAMA_URL = os.getenv('LLAMA_URL')
+LLAMA_MODEL = os.getenv('LLAMA_URL')
 
 llama_client = Groq()
 # SQLAlchemy Database URI
@@ -380,7 +381,7 @@ def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""
         The generated text.
     """
     data = {
-        "model": "llama3",
+        "model": LLAMA_MODEL,
         "messages": messages,
         "stream": False
     }
