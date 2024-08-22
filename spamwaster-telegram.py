@@ -7,6 +7,7 @@ import sys
 import json
 import requests
 import asyncio
+import aiohttp
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import random
@@ -161,20 +162,20 @@ class ChatSession:
         # Ensure there's only one system instruction entry
         self.chat_history = [entry for entry in self.chat_history if entry["role"] != "system"] + [{"role": "system", "content": system_instructions}]
         #print(f"Starting LLama chat with: {self.chat_history}")
-    def send_message(self, message, role="user"):
+    async def send_message(self, message, role="user"):
         """Sends a message and appends it to the chat history."""
         # Add the user's message to the history
         self.chat_history.append({"role": role, "content": message})
 
         # Simulate a response from the AI model
-        response = self.get_ai_response(self.chat_history)
+        response = await self.get_ai_response(self.chat_history)
 
         # Add the AI's response to the history
         self.chat_history.append({"role": "assistant", "content": response})
         
         return response
     
-    def get_ai_response(self, chat_history):
+    async def get_ai_response(self, chat_history):
         """Simulates getting a response from an AI model. Replace with actual AI call."""
         # Here, you would implement the logic to communicate with the AI model,
         # passing the chat history and receiving the model's response.
@@ -182,7 +183,7 @@ class ChatSession:
         user_message = chat_history[-1]["content"]
         print(json.dumps(chat_history, indent=4))
         #print (user_message)
-        response = chat_completion(chat_history)
+        response = await chat_completion(chat_history)
         return response
     
 # Handle time of day
@@ -317,7 +318,7 @@ def construct_prompt(examples, new_input=None):
 
 # Model ID from Hugging Face Hub
 model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-def chat_completion(
+async def chat_completion(
         messages: List[Dict],
         model = DEFAULT_MODEL,
         temperature: float = 0.6,
@@ -333,21 +334,22 @@ def chat_completion(
             return response.choices[0].message.content
 
         else:
-            return llama_generate_text(messages)
-def completion(
+            response = await llama_generate_text(messages)
+            return response
+async def completion(
     prompt: str,
     model: str = DEFAULT_MODEL,
     temperature: float = 0.6,
     top_p: float = 0.9,
 ) -> str:
-    return chat_completion(
+    return await chat_completion(
         [llama_user(prompt)],
         model=model,
         temperature=temperature,
         top_p=top_p,
     )
 
-def is_photo(text):
+async def is_photo(text):
     system_prompt = """
         You are trying to determine if the user input is a request to share a photo over text. 
         Respond with yes or no, along with a determination as to what sort of photo is being requested. 
@@ -357,7 +359,7 @@ def is_photo(text):
             "photo_type": str
          }
     """
-    return chat_completion(
+    return await chat_completion(
         [system(system_prompt),
         llama_user("can you send me a photo of you"),
         assistant(" { \"is_photo\": \"yes\", \"profile_photo\": \"profile photo\" }"),
@@ -367,7 +369,7 @@ def is_photo(text):
     ]
     )
 
-def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
+async def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
     """Generates text based on the given prompt and conversation history.
 
     Args:
@@ -391,8 +393,10 @@ def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""
     }
     
     response = requests.post(LLAMA_URL, headers=headers, json=data)
-    
-    return(response.json()['message']['content'])
+    async with aiohttp.ClientSession() as session:
+        async with session.post(LLAMA_URL, headers=headers, json=data) as response:
+            response_json = await response.json()
+            return response_json['message']['content']
 
 
 #######################################
@@ -623,7 +627,7 @@ async def get_user_info(user_id):
 
     return user_info
 
-def get_photo_and_text(message_text):
+async def get_photo_and_text(message_text):
     response_text = ''
     if 'gemini' in AI_MODEL:
         prime_response = photo_model.generate_content(model_priming)
@@ -632,7 +636,7 @@ def get_photo_and_text(message_text):
         response_text = response.text
         
     elif 'llama' in AI_MODEL:
-        response_text = is_photo(message_text)
+        response_text = await is_photo(message_text)
         print (response_text)
     print(f"asking for a photo? {response_text}")
     
@@ -711,7 +715,7 @@ async def my_handler(client, message):
         image_response = photo_eval_model.generate_content([sample_file, "Describe this image"])
         image_description = image_response.text
         model_input = f"An image was sent with this description: {image_description}"
-        response = chat.send_message(model_input)
+        response = await chat.send_message(model_input)
         if 'llama' in AI_MODEL:
             response_string = response
         else:
@@ -725,14 +729,14 @@ async def my_handler(client, message):
         est_time = utc_time.astimezone(est)
 
         # Get Model response
-        response = chat.send_message(text)
+        response = await chat.send_message(text)
         if 'llama' in AI_MODEL:
             response_string = response
         else:
             response_string = response.text
 
         # Check to see if we need to reply with a photo
-        photo_path, photo_text = get_photo_and_text(text)
+        photo_path, photo_text = await get_photo_and_text(text)
         if photo_path:
             if user:
                 response_text = f"You sent a photo and this text: {photo_text}"
