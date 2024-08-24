@@ -50,7 +50,7 @@ AI_MODEL=os.getenv('AI_MODEL')
 os.environ["GROQ_API_KEY"] = os.getenv('GROQ_API_KEY')
 
 LLAMA3_70B_INSTRUCT = "llama3-70b-8192"
-LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
+LLAMA3_8B_INSTRUCT = "llama3:latest"
 
 DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
 LLAMA_URL = os.getenv('LLAMA_URL')
@@ -366,7 +366,8 @@ async def is_photo(text):
     
         llama_user(text),
 
-    ]
+    ],
+    LLAMA3_8B_INSTRUCT
     )
 
 async def llama_generate_text(messages, temperature=0.7, max_new_tokens=256, system=""):
