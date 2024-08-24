@@ -728,7 +728,7 @@ async def my_handler(client, message):
         est = pytz.timezone('US/Eastern')
         est_time = utc_time.astimezone(est)
 
-        await app.send_chat_action(message.id, enums.ChatAction.TYPING)
+        await app.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
 
         # Get Model response
         response = await chat.send_message(text)
@@ -762,7 +762,7 @@ async def my_handler(client, message):
         # Delay before we start sending
         delay += count_words(response_string)
         if USE_DELAY:
-            await app.send_chat_action(message.id, enums.ChatAction.TYPING)
+            await app.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
 
             time.sleep(delay)
         
