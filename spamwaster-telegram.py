@@ -7,6 +7,7 @@ import sys
 import json
 import requests
 import asyncio
+import threading
 import aiohttp
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -50,7 +51,8 @@ AI_MODEL=os.getenv('AI_MODEL')
 os.environ["GROQ_API_KEY"] = os.getenv('GROQ_API_KEY')
 
 LLAMA3_70B_INSTRUCT = "llama3-70b-8192"
-LLAMA3_8B_INSTRUCT = "llama3:latest"
+LLAMA3_8B_INSTRUCT = "llama3-8b-8192"
+LLAMA_LOCAL_8B = "llama3:latest"
 
 DEFAULT_MODEL = LLAMA3_70B_INSTRUCT
 LLAMA_URL = os.getenv('LLAMA_URL')
@@ -681,6 +683,15 @@ async def download_file(message):
 
     print(path)
     return path
+
+async def send_typing(chat_id, stop_event):
+    try:
+        while not stop_event.is_set():
+            # Assuming `app.send_chat_action` is an async function that simulates typing
+            await asyncio.sleep(random.uniform(1, 10))
+            await app.send_chat_action(chat_id, enums.ChatAction.TYPING)
+    except asyncio.CancelledError:
+        pass
 #################################
 #   Telegram Message Handler    #
 #################################
@@ -691,85 +702,87 @@ async def my_handler(client, message):
     print(f"OnMessage handler: {client} \n{message}")
     processed_messages.append(message.id)
     global my_user
-    if my_user == None:
+    if my_user is None:
         my_user = await app.get_me()
+
     id = message.from_user.id
     delay = random.uniform(1, 10)
     relative_path = ''
     
     if message.from_user.id == my_user.id:
         return
+
     text = message.text
-    response_string = ''
-    user_info = await get_user_info(id)
-    if user_info:
-        user_obj = user_info[0]
-        id = user_obj.id
-        user = get_user(user_obj)
-    chat = get_chat(id)
-    if message.media and message.media == enums.MessageMediaType.PHOTO:
-        # Media message
-        print(f'Message contains media: ')
-        path = await download_file(message)
-        relative_path = os.path.relpath(path, starting_directory)
-        sample_file = genai.upload_file(path, display_name="Sample drawing")
-        image_response = photo_eval_model.generate_content([sample_file, "Describe this image"])
-        image_description = image_response.text
-        model_input = f"An image was sent with this description: {image_description}"
-        response = await chat.send_message(model_input)
-        if 'llama' in AI_MODEL:
-            response_string = response
-        else:
-            response_string = response.text
-        text = model_input
-        #await message.reply(response_string)
-    elif text:
-        # Get current time for EST
-        utc_time = datetime.now(pytz.utc)
-        est = pytz.timezone('US/Eastern')
-        est_time = utc_time.astimezone(est)
 
-        await app.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
+    # Start typing randomly
+    stop_event = asyncio.Event()
 
-        # Get Model response
-        response = await chat.send_message(text)
-        if 'llama' in AI_MODEL:
-            response_string = response
-        else:
-            response_string = response.text
+    # Start the repeating action in a background task
+    typing_task = asyncio.create_task(send_typing(message.chat.id, stop_event))
 
-        # Check to see if we need to reply with a photo
-        photo_path, photo_text = await get_photo_and_text(text)
-        if photo_path:
-            if user:
-                response_text = f"You sent a photo and this text: {photo_text}"
-                add_history('user', text, user, relative_path)
-                
+    try:
+        response_string = ''
+        user_info = await get_user_info(id)
+        if user_info:
+            user_obj = user_info[0]
+            id = user_obj.id
+            user = get_user(user_obj)
+        chat = get_chat(id)
+        if message.media and message.media == enums.MessageMediaType.PHOTO:
+            # Media message
+            print('Message contains media')
+            path = await download_file(message)
+            relative_path = os.path.relpath(path, starting_directory)
+            sample_file = genai.upload_file(path, display_name="Sample drawing")
+            image_response = photo_eval_model.generate_content([sample_file, "Describe this image"])
+            image_description = image_response.text
+            model_input = f"An image was sent with this description: {image_description}"
+            response = await chat.send_message(model_input)
+            response_string = response if 'llama' in AI_MODEL else response.text
+            text = model_input
+        elif text:
+            # Get current time for EST
+            utc_time = datetime.now(pytz.utc)
+            est = pytz.timezone('US/Eastern')
+            est_time = utc_time.astimezone(est)
+
+            # Get Model response
+            response = await chat.send_message(text)
+            response_string = response if 'llama' in AI_MODEL else response.text
+
+            # Check to see if we need to reply with a photo
+            photo_path, photo_text = await get_photo_and_text(text)
+            if photo_path:
+                if user:
+                    response_text = f"You sent a photo and this text: {photo_text}"
+                    add_history('user', text, user, relative_path)
+
+                if USE_DELAY:
+                    await asyncio.sleep(delay)
+                try:
+                    await app.send_photo(id, photo_path, photo_text)
+                    add_history('ai', response_text, user, photo_path)
+
+                    chat.chat_history.append(llama_user(text))
+                    chat.chat_history.append(assistant(f"You sent a photo and this text: {photo_text}"))
+                except RPCError as e:
+                    print(f"Error sending photo: {e}")
+                return
+
+        add_history('user', text, user, relative_path)
+        if response_string:
+            # Delay before we start sending
+            delay += int(0.5 * count_words(response_string))
             if USE_DELAY:
-                time.sleep(delay)
-            try:
-                await app.send_photo(id, photo_path, photo_text)
-                add_history('ai', response_text, user, photo_path)
+                await asyncio.sleep(delay)
 
-                chat.chat_history.append(llama_user(text))
-                chat.chat_history.append(assistant(f"You sent a photo and this text: {photo_text}"))
-            except RPCError as e:
-                print(f"error sending photo {e}")
-            return
-
-    add_history('user', text, user, relative_path)
-    if response_string:
-        
-        # Delay before we start sending
-        delay += count_words(response_string)
-        if USE_DELAY:
-            await app.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
-
-            time.sleep(delay)
-        
-        if user:
-            add_history('ai', response_string, user)
-        
-        await message.reply(response_string)
+            if user:
+                add_history('ai', response_string, user)
+            await message.reply(response_string)
+    finally:
+        # Ensure that the typing task is canceled and stop_event is set
+        stop_event.set()
+        typing_task.cancel()
+        await typing_task
 
 app.run()
