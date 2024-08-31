@@ -612,7 +612,7 @@ def get_chat(chat_id):
             est_time = get_adjusted_dt(utc_time)
             current_time_of_day = time_of_day(est_time)
             
-            new_instructions = system_instructions + f"Current time of day is {current_time_of_day}"
+            new_instructions = system_instructions.append(f"Current time of day is {current_time_of_day}")
             saved_time_of_day = current_time_of_day
             history = chat.chat_history
             chat = ChatSession()
