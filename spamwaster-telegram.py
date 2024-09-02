@@ -19,6 +19,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeText, ForeignKey, DateTime, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import pytz
 
 # LLama
 from typing import Dict, List
@@ -32,7 +33,8 @@ load_dotenv()
 app = Client("my_account")
 my_user = None
 starting_directory = os.path.dirname(os.path.abspath(sys.argv[0]))
-
+task_map = {}
+question_cache = {}
 # Get the value of USE_SSH_TUNNEL
 use_ssh = os.getenv('USE_SSH_TUNNEL', 'False').lower() in ['true', '1', 't', 'y', 'yes']
 
@@ -66,7 +68,7 @@ DATABASE_URL = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_host}/{db_na
 # Define engine options
 engine_options = {
     'pool_recycle': 280,
-    'echo': True  # Enables logging of all SQL statements
+    'echo': False  # Enables logging of all SQL statements
 }
 
 # Create the engine with the specified options
@@ -183,8 +185,8 @@ class ChatSession:
         # passing the chat history and receiving the model's response.
         # For this example, we'll just echo the last user message.
         user_message = chat_history[-1]["content"]
-        print(json.dumps(chat_history, indent=4))
-        #print (user_message)
+        #print(json.dumps(chat_history, indent=4))
+        print (user_message)
         response = await chat_completion(chat_history)
         return response
     
@@ -613,7 +615,7 @@ def get_chat(chat_id):
             est_time = get_adjusted_dt(utc_time)
             current_time_of_day = time_of_day(est_time)
             
-            new_instructions = system_instructions.append(f"Current time of day is {current_time_of_day}")
+            new_instructions = llama_instructions + f" The current time of day is {current_time_of_day}"
             saved_time_of_day = current_time_of_day
             history = chat.chat_history
             chat = ChatSession()
@@ -642,8 +644,8 @@ async def get_photo_and_text(message_text):
         response_text = await is_photo(message_text)
         print (response_text)
     print(f"asking for a photo? {response_text}")
-    
-    if 'yes' in response_text.lower():
+    random_num = random.uniform(1, 100)
+    if 'yes' in response_text.lower() and random_num > 90:
         photo_path = profile_photo_path
         photo_text = 'here is selfie'
         if 'pet' in response_text.lower():
@@ -699,11 +701,19 @@ def run_in_thread(coro, loop):
     loop.run_until_complete(coro)
 
 async def generate_response_and_send(message):
+    global question_cache
     delay = random.uniform(1, 10)
     relative_path = ''
     id = message.from_user.id
-    text = message.text
-
+    text = ''
+    if id in question_cache:
+        question_cache[id] += message.text + "\n"
+        text = question_cache[id]
+        
+    else:
+        text = message.text
+        question_cache[id] = text + '\n'
+    
     response_string = ''
     user_info = await get_user_info(id)
     if user_info:
@@ -750,6 +760,8 @@ async def generate_response_and_send(message):
                 chat.chat_history.append(assistant(f"You sent a photo and this text: {photo_text}"))
             except RPCError as e:
                 print(f"Error sending photo: {e}")
+            del question_cache[id]
+
             return
 
     add_history('user', text, user, relative_path)
@@ -762,18 +774,28 @@ async def generate_response_and_send(message):
         if user:
             add_history('ai', response_string, user)
         await message.reply(response_string)
+        del question_cache[id]
+
     return
-    
+
+def is_task_running_for_user(user_id):
+    task = task_map.get(user_id)
+    if task is None:
+        return False
+    return not task.done()
 #################################
 #   Telegram Message Handler    #
 #################################
 @app.on_message(filters.text | filters.photo)
 async def my_handler(client, message):
+    global task_map
+    global my_user
+    global question_cache
     if message.outgoing or message.id in processed_messages:
         return
-    print(f"OnMessage handler: {client} \n{message}")
+    print(f"OnMessage handler: {message.text}")
     processed_messages.append(message.id)
-    global my_user
+    
     if my_user is None:
         my_user = await app.get_me()
     
@@ -781,24 +803,47 @@ async def my_handler(client, message):
         return
 
 
+    # Cancel the current task if it's running
+    if message.from_user.id in task_map and not task_map[message.from_user.id].done():
+        print(f"Cancelling the current task for {message.from_user.id}")
+        task_map[message.from_user.id].cancel()
+        try:
+            await task_map[message.from_user.id]
+        except asyncio.CancelledError:
+            print("Previous task was successfully cancelled.")
+
     # Event to stop the typing simulation
     stop_event = asyncio.Event()
 
-    try:
-        # Start the typing simulation as a background task
-        typing_task = asyncio.create_task(send_typing(message.chat.id, stop_event))
-
-        # Handle the response generation and sending in the main task
-        await generate_response_and_send(message)
-
-    finally:
-        # Stop the typing simulation
-        stop_event.set()
-        typing_task.cancel()
+    async def handle_request():
         try:
-            await typing_task
-        except asyncio.CancelledError:
-            pass
+            # Start the typing simulation as a background task
+            typing_task = asyncio.create_task(send_typing(message.chat.id, stop_event))
+
+            # Handle the response generation and sending in the main task
+            await generate_response_and_send(message)
+        finally:
+            # Stop the typing simulation
+            stop_event.set()
+            typing_task.cancel()
+            try:
+                await typing_task
+            except asyncio.CancelledError:
+                pass
+    
+    def cleanup(task):
+        if message.from_user.id in task_map and task_map[message.from_user.id] is task:
+            del task_map[message.from_user.id]
+            print(f"Cleaned up task for user {message.from_user.id}")
+
+    if message.from_user.id in task_map:
+        # Cancel the existing task
+        task_map[message.from_user.id].cancel()
+
+    task = asyncio.create_task(handle_request())
+    # Start a new task and store it in the dictionary
+    task_map[message.from_user.id] = task
+    task.add_done_callback(cleanup)
 
 
 
