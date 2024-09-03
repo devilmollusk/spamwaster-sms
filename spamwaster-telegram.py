@@ -356,7 +356,7 @@ async def completion(
 async def is_photo(text):
     system_prompt = """
         You are trying to determine if the user input is a request to share a photo over text. 
-        Respond with yes or no, along with a determination as to what sort of photo is being requested. 
+        Respond with yes or no, along with a determination as to what sort of photo is being requested. Please be very selective and only respond yes if you are sure the text is requesting that the user send a photo
         Return in JSON format like:
          {
             "is_photo": bool,
@@ -705,14 +705,18 @@ async def generate_response_and_send(message):
     delay = random.uniform(1, 10)
     relative_path = ''
     id = message.from_user.id
-    text = ''
-    if id in question_cache:
-        question_cache[id] += message.text + "\n"
-        text = question_cache[id]
-        
-    else:
-        text = message.text
-        question_cache[id] = text + '\n'
+    text = message.text
+    if message.sticker is not None and message.sticker.emoji is not None:
+        emoji = message.sticker.emoji
+        text = emoji
+        print(emoji)
+    if text is not None:
+        if id in question_cache:
+            question_cache[id] += text + "\n"
+            text = question_cache[id]
+            
+        else:
+            question_cache[id] = text + '\n'
     
     response_string = ''
     user_info = await get_user_info(id)
@@ -721,6 +725,7 @@ async def generate_response_and_send(message):
         id = user_obj.id
         user = get_user(user_obj)
     chat = get_chat(id)
+    
     if message.media and message.media == enums.MessageMediaType.PHOTO:
         # Media message
         print('Message contains media')
@@ -760,7 +765,8 @@ async def generate_response_and_send(message):
                 chat.chat_history.append(assistant(f"You sent a photo and this text: {photo_text}"))
             except RPCError as e:
                 print(f"Error sending photo: {e}")
-            del question_cache[id]
+            if id in question_cache:
+                del question_cache[id]
 
             return
 
@@ -774,7 +780,8 @@ async def generate_response_and_send(message):
         if user:
             add_history('ai', response_string, user)
         await message.reply(response_string)
-        del question_cache[id]
+        if id in question_cache:
+            del question_cache[id]
 
     return
 
@@ -786,14 +793,14 @@ def is_task_running_for_user(user_id):
 #################################
 #   Telegram Message Handler    #
 #################################
-@app.on_message(filters.text | filters.photo)
+@app.on_message(filters.text | filters.photo | filters.sticker)
 async def my_handler(client, message):
     global task_map
     global my_user
     global question_cache
     if message.outgoing or message.id in processed_messages:
         return
-    print(f"OnMessage handler: {message.text}")
+    print(f"OnMessage handler: {message}")
     processed_messages.append(message.id)
     
     if my_user is None:
