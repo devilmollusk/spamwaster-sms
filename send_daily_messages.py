@@ -211,12 +211,23 @@ def add_history(role: str, text:str, user_id:str, media:str = ''):
     session.add(new_history)
     session.commit()
 
+def count_assistant_until_user(messages):
+    assistant_count = 0
+    
+    # Iterate backwards over the list
+    for message in reversed(messages):
+        if message["role"] == "user":
+            # Stop counting when the first user message is found
+            break
+        if message["role"] == "assistant":
+            assistant_count += 1
+    
+    return assistant_count
+
 async def send_message_to_user(telegram_id, user_id, message):
     print(f"sending message to {telegram_id}:\n{message}")
     try:
-        
         await app.send_message(telegram_id, message)
-        
         add_history('ai', message, user_id)
     except RPCError as e:
         print(e)
@@ -237,12 +248,13 @@ async def check_and_send_messages():
         if days_since_last_message > 1:
 
             messages = get_user_history(user_id)
+            if count_assistant_until_user(messages) < 3:
+                messages.append(system(system_instructions))
+                messages.append(llama_user(f"\nIt\'s been {days_since_last_message} days since you messaged with this user. Please take into accoutn the last message sent by the user, and please craft a message to restart the conversation"))
 
-            messages.append(system(system_instructions))
-            messages.append(llama_user(f"\nIt\'s been {days_since_last_message} days since you messaged with this user. Please take into accoutn the last message sent by the user, and please craft a message to restart the conversation"))
-
-            response = await chat_completion(messages)
-            await send_message_to_user(telegram, user_id, response)
+                response = await chat_completion(messages)
+                await send_message_to_user(telegram, user_id, response)
+                
     await app.stop()
 async def main():
     await check_and_send_messages()
