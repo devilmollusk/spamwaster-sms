@@ -23,6 +23,11 @@ from groq import Groq
 # Load environment variables from .env file
 load_dotenv()
 
+# Get the directory where the script is located
+script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+# Change the working directory to the script's directory
+os.chdir(script_dir)
 app = Client("my_account")
 
 # Database configuration using environment variables
@@ -254,7 +259,7 @@ async def check_and_send_messages():
 
                 response = await chat_completion(messages)
                 await send_message_to_user(telegram, user_id, response)
-                
+
     await app.stop()
 async def main():
     await check_and_send_messages()
