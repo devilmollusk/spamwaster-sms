@@ -68,7 +68,7 @@ DATABASE_URL = f'mysql+mysqlconnector://{db_user}:{db_password}@{db_host}/{db_na
 # Define engine options
 engine_options = {
     'pool_recycle': 280,
-    'echo': False  # Enables logging of all SQL statements
+    'echo': True  # Enables logging of all SQL statements
 }
 
 # Create the engine with the specified options
