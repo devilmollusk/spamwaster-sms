@@ -28,7 +28,7 @@ script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
 
 # Change the working directory to the script's directory
 os.chdir(script_dir)
-app = Client("my_account")
+app = Client("daily_sender")
 
 # Database configuration using environment variables
 db_user = os.getenv('DB_USER')
