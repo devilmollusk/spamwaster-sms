@@ -20,12 +20,15 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, UnicodeT
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import pytz
+import logging
+import traceback
 
 # LLama
 from typing import Dict, List
 from groq import Groq
 from huggingface_hub import login
 
+logging.basicConfig(filename='app.log', level=logging.DEBUG)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -853,5 +856,10 @@ async def my_handler(client, message):
     task.add_done_callback(cleanup)
 
 
+try:
+    # Your code here
+    app.run()
+except Exception as e:
+    logging.error("Exception occurred", exc_info=True)
+    traceback.print_exc()
 
-app.run()
